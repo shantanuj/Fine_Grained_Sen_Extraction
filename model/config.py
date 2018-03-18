@@ -73,9 +73,9 @@ class Config():
     # filename_train = "data/coNLL/eng/eng.train.iob"
 
     #>>>>>>>>>>>>>>>>>>Training and testing files<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    filename_dev = filename_test = "data/Laptoptest_data.txt"
+    filename_dev = filename_test = "data/Resttest_data.txt"
     #filename_dev = filename_test =
-    filename_train = "data/Laptoptrain_data.txt" # test
+    filename_train = "data/Resttrain_data.txt" # test
 
     max_iter = None # if not None, max number of examples in Dataset
 
@@ -86,12 +86,12 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs          = 20
+    nepochs          = 15
     dropout          = 0.5
     batch_size       = 25
     lr_method        = "adagrad"
-    lr               = 0.01
-    lr_decay         = 0.9
+    lr               = 0.02
+    lr_decay         = 0.6
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 8
 
@@ -112,11 +112,15 @@ class Config():
 
 	return s
     #>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
-    domain = "Laptop"
+    domain = "Rest"#"Laptop"
     embedding_name = "Glove_200d"
+    use_CPU_only = False#True
+    model_already_exists = True #False#os.path.isdir(dir_output)
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars)
     dir_output = "results/{}_{}_{}/".format(domain, embedding_name, extra)
+    
     dir_model  = dir_output + "model.weights/"
+
     path_log   = dir_output + "log.txt"
 
 

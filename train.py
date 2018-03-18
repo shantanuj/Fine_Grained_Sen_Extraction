@@ -10,7 +10,9 @@ def main():
     # build model
     model = NERModel(config)
     model.build()
-    #model.restore_session(config.dir_model) # optional, restore weights
+    if(config.model_already_exists):
+	print("Training existing model")
+        model.restore_session(config.dir_model) # optional, restore weights
     # model.reinitialize_weights("proj")
 
     # create datasets
