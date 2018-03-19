@@ -114,7 +114,7 @@ class Config():
     #>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
     domain = "Rest"#"Laptop"
     embedding_name = "Glove_200d"
-    use_CPU_only = False#True
+    use_CPU_only = True#False#True
     model_already_exists = True #False#os.path.isdir(dir_output)
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars)
     dir_output = "results/{}_{}_{}/".format(domain, embedding_name, extra)
