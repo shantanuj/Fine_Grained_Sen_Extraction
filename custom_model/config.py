@@ -2,7 +2,7 @@ import os
 
 
 from .general_utils import get_logger
-from .data_utils import get_word_embeddings, load_vocab, load_word_vocab, \
+from .data_utils import get_trimmed_glove_vectors, load_vocab, load_word_vocab, \
         get_processing_word
 
 
@@ -51,7 +51,7 @@ class Config():
                 lowercase=False, allow_unk=False)
 
         # 3. get pre-trained embeddings
-        self.embeddings = (get_word_embeddings(self.filename_trimmed)
+        self.embeddings = (get_trimmed_glove_vectors(self.filename_trimmed)
                 if self.use_pretrained else None)
 
 
@@ -62,9 +62,9 @@ class Config():
 
     #>>>>>> WORD VECTOR FILES<<<<<<<<<<<
 
-    #filename_glove = "data/Embeddings/glove.6B/glove.6B.{}d.txt".format(dim_word)
+    filename_glove = "data/Embeddings/glove.6B/glove.6B.{}d.txt".format(dim_word)
     # trimmed embeddings (created from glove_filename with build_data.py)
-    filename_trimmed = "data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
+    filename_trimmed = "data/Embeddings/glove.6B.{}d.trimmed.npz".format(dim_word)
     use_pretrained = True
 
     # dataset

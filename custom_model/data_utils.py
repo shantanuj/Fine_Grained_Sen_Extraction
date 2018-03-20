@@ -244,7 +244,7 @@ def export_trimmed_glove_vectors(vocab, glove_filename, trimmed_filename, dim):
     np.savez_compressed(trimmed_filename, embeddings=embeddings)
 
 
-def get_word_embeddings(filename):
+def get_trimmed_glove_vectors(filename):
     """
     Args:
         filename: path to the npz file
