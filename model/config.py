@@ -5,7 +5,6 @@ from .general_utils import get_logger
 from .data_utils import get_word_embeddings, load_vocab, load_word_vocab, \
         get_processing_word
 
-
 class Config():
     def __init__(self, load=True):
         """Initialize hyperparameters and load vocabs
@@ -15,10 +14,14 @@ class Config():
                 np array, else None
 
         """
-        # directory for training outputs
+#        model_already_exists = True
+
+
+	 # directory for training outputs
         if not os.path.exists(self.dir_output):
             os.makedirs(self.dir_output)
-
+#	elif(model_already_exists == False):
+#	    input("Are you sure you want to overwrite previous model?")
         # create instance of logger
         self.logger = get_logger(self.path_log)
 
@@ -64,7 +67,7 @@ class Config():
 
     #filename_glove = "data/Embeddings/glove.6B/glove.6B.{}d.txt".format(dim_word)
     # trimmed embeddings (created from glove_filename with build_data.py)
-    filename_trimmed = "data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
+    #filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
     use_pretrained = True
 
     # dataset
@@ -73,10 +76,6 @@ class Config():
     # filename_train = "data/coNLL/eng/eng.train.iob"
 
     #>>>>>>>>>>>>>>>>>>Training and testing files<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    filename_dev = filename_test = "data/Resttest_data.txt"
-    #filename_dev = filename_test =
-    filename_train = "data/Resttrain_data.txt" # test
-
     max_iter = None # if not None, max number of examples in Dataset
 
     # vocab (created from dataset with build_data.py)
@@ -86,12 +85,12 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs          = 15
+    nepochs          = 25
     dropout          = 0.5
     batch_size       = 25
     lr_method        = "adagrad"
     lr               = 0.02
-    lr_decay         = 0.6
+    lr_decay         = 0.9
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 8
 
@@ -113,10 +112,17 @@ class Config():
 	return s
     #>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
     domain = "Rest"#"Laptop"
-    embedding_name = "Glove_200d"
+    embedding_name = "W2V_200d"
+    filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
+ 
     use_CPU_only = True#False#True
-    model_already_exists = False#True #False#os.path.isdir(dir_output)
+    model_already_exists = True#False#os.path.isdir(dir_output)
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars)
+    filename_dev = filename_test = "data/Resttest_data.txt"
+    #filename_dev = filename_test =
+    filename_train = "data/Resttrain_data.txt" # test
+
+
     dir_output = "results/{}_{}_{}/".format(domain, embedding_name, extra)
     
     dir_model  = dir_output + "model.weights/"
