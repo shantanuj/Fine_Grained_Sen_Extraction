@@ -1,6 +1,6 @@
-1) Load vocab as pickle file, and word vector path in config.py
+1) Load vocab as pickle file, and word vector path in config.py. Make sure the vocab matches with the stored embeddings. 
 
-2) If processed word embeddings do no not exist, then program will run trimming of word vectors from intersection of given vocab and vector path.
+2) If processed word embeddings do no not exist, then program will run trimming of word vectors from intersection of given vocab and vector path (use trimmed vectors.py in data/Embeddings directory, use vocab as the one to be used) 
 
 3) load train, test, etc in data/ folder. Specify path in model/config.py
 
