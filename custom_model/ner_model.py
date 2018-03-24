@@ -34,7 +34,8 @@ class NERModel(BaseModel):
         # shape = (batch_size, max_length of sentence)
         self.word_lengths = tf.placeholder(tf.int32, shape=[None, None],
                         name="word_lengths")
-
+	#to be used for seq2seq decoder
+	self.decoder_targets = tf.placeholder(tf.int32, shape = [None, None], name="decoder_targets")
         # shape = (batch size, max length of sentence in batch)
         self.labels = tf.placeholder(tf.int32, shape=[None, None],
                         name="labels")
@@ -45,6 +46,10 @@ class NERModel(BaseModel):
         self.lr = tf.placeholder(dtype=tf.float32, shape=[],
                         name="lr")
 
+	#self.pad_token = '<PAD>'
+	#self.eos_token = '<END>'
+	#self.PAD = self.config.vocab_words[self.pad_token]
+ 	#self.EOS = self.config.vocab_words[self.eos_token]
 
     def get_feed_dict(self, words, labels=None, lr=None, dropout=None):
         """Given some data, pad it and build a feed dictionary
@@ -60,7 +65,7 @@ class NERModel(BaseModel):
             dict {placeholder: value}
 
         """
-        # perform padding of the given data
+        # perform padding of the given data:
         if self.config.use_chars:
             char_ids, word_ids = zip(*words)
             word_ids, sequence_lengths = pad_sequences(word_ids, 0)
@@ -80,7 +85,7 @@ class NERModel(BaseModel):
             feed[self.word_lengths] = word_lengths
 
         if labels is not None:
-            labels, _ = pad_sequences(labels, 0)
+            labels, _ = pad_sequences(labels, self.config.vocab_tags['O'])
             feed[self.labels] = labels
 
         if lr is not None:
@@ -154,6 +159,53 @@ class NERModel(BaseModel):
         self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout)
 
 
+    def add_seq2seq(self):
+	"""This stores the seq2seq model which will be imported as part of the training graph since other options of creating a separate training graph/session and importing seemed lengthy. 
+
+	1) It is to be first trained for autoencoding separately 
+	2) Once the training is complete, user has to update config in model_config.py
+	3) For usage in ABSA, the variable tf_encoded_concat_rep is used. It is updated to not trainable by blocking the gradient flow
+"""
+#NOTE: 1) There might be a more efficient manner to load and train the seq2seq separately, and then just use the final weights. 
+#NOTE: 2) Blocking gradients should not impact elements linked to this
+	if(self.config.use_seq2seq):
+		with tf.variable_scope('seq2seq_encoder'):
+		    encoder_cell = LSTMCell(self.config.seq2seq_enc_hidden_size)
+		    ((encoder_fw_outputs, 
+		      encoder_bw_outputs), 
+		      (encoder_fw_final_state,
+		       encoder_bw_final_state)) = (
+			 tf.nn.bidirectional_dynamic_rnn(cell_fw=encoder_cell, cell_bw=encoder_cell, inputs = self.word_embeddings, sequence_length = self.sequence_lengths, dtype = tf.float32, time_major=True))
+		    #encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs),2)
+		    encoder_final_state_c = tf.concat((encoder_fw_final_state.c, encoder_bw_final_state.c),1)
+		    encoder_final_state_h = tf.concat((encoder_fw_final_state.h, encoder_bw_final_state.h),1)
+
+		    self.encoder_final_state = LSTMStateTuple(c= encoder_final_state_c, h=encoder_final_state_h)
+
+		    self.encoder_encoded_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)
+		    if(self.config.seq2seq_trained):
+		        self.encoder_encoded_concat_rep = tf.stop_gradient(self.encoder_encoded_concat_rep) 
+		    
+
+		with tf.variable_scope('seq2seq_decoder'):
+		
+
+                    encoder_max_time, batch_size = tf.unstack(tf.shape(self.word_ids))
+
+
+                    decoder_cell = LSTMCell(self.config.seq2seq_dec_hidden_size)
+		    decoder_lengths = self.sequence_lengths + 3 #2 additional terms
+		    W_dec = tf.Variable(tf.random_uniform([self.config.seq2seq_dec_hidden_size, self.config.nwords],-1,1), dtype = tf.float32)
+		    b = tf.Variable(tf.zeros([self.config.nwords]), dtype = tf.float32)
+		   
+		    eos_time_slice = self.config.EOS*tf.ones([batch_size], dtype=tf.int32, name = "EOS")
+		    pad_time_slice = self.config.PAD*tf.ones([batch_size], dtype = tf.int32, name="PAD")
+
+		    eos_step_embedded = tf.nn.embedding_lookup(_word_embeddings, eos_time_slice)
+		    pad_step_embedded = tf.nn.embedding_lookup(_word_embeddings, pad_time_slice)
+
+
+
     def add_logits_op(self):
         """Defines self.logits
 
@@ -181,23 +233,7 @@ class NERModel(BaseModel):
             pred = tf.matmul(output, W) + b
             self.logits = tf.reshape(pred, [-1, nsteps, self.config.ntags])
 
-    def get_word_dropped_batch(self, word_seq_batch, word_drop_indices_batch):
-	##NOTE :Currently we don't use word_drop_indices_batch
-	
-    
-    def bridge_seq2seq(self):
-	if self.use_seq2seq:
-	   
-	#1)  Take in word embeddings tensor AND word sequence tensor 
-	#2) NOTE For future we will use the following to avoid excess seq2seq encoder state computations: 
-	   #A) Drop index tensor-> Specifies 1 for which index has to be dropped (based on heuristic, high positive models)
-	   #B) Seq length --> Avoid computations for non-index words
 
-	# THerefore here we skip to taking the  word embeddings tensor directly 
-
-	#SINCE word embedding lookup is an batch operation. Making a new batch for seq2seq is easier and less complex
-	   word_drops_batch =  
- 
     def add_pred_op(self):
         """Defines self.labels_pred
 

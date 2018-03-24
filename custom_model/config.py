@@ -2,9 +2,8 @@ import os
 
 
 from .general_utils import get_logger
-from .data_utils import get_trimmed_glove_vectors, load_vocab, load_word_vocab, \
+from .data_utils import get_word_embeddings, load_vocab, load_word_vocab, \
         get_processing_word
-
 
 class Config():
     def __init__(self, load=True):
@@ -15,10 +14,14 @@ class Config():
                 np array, else None
 
         """
-        # directory for training outputs
+#        model_already_exists = True
+
+
+	 # directory for training outputs
         if not os.path.exists(self.dir_output):
             os.makedirs(self.dir_output)
-
+#	elif(model_already_exists == False):
+#	    input("Are you sure you want to overwrite previous model?")
         # create instance of logger
         self.logger = get_logger(self.path_log)
 
@@ -44,14 +47,19 @@ class Config():
         self.nchars     = len(self.vocab_chars)
         self.ntags      = len(self.vocab_tags)
 
-        # 2. get processing functions that map str -> id
+	self.pad_token = '<PAD>'
+	self.eos_token = '<END>'
+	self.PAD = self.config.vocab_words[self.pad_token]
+	self.EOS = self.config.vocab_words[self.eos_token]
+	print(self.vocab_tags)
+       # 2. get processing functions that map str -> id
         self.processing_word = get_processing_word(self.vocab_words,
                 self.vocab_chars, lowercase=True, chars=self.use_chars)
         self.processing_tag  = get_processing_word(self.vocab_tags,
                 lowercase=False, allow_unk=False)
 
         # 3. get pre-trained embeddings
-        self.embeddings = (get_trimmed_glove_vectors(self.filename_trimmed)
+        self.embeddings = (get_word_embeddings(self.filename_trimmed)
                 if self.use_pretrained else None)
 
 
@@ -62,9 +70,9 @@ class Config():
 
     #>>>>>> WORD VECTOR FILES<<<<<<<<<<<
 
-    filename_glove = "data/Embeddings/glove.6B/glove.6B.{}d.txt".format(dim_word)
+    #filename_glove = "data/Embeddings/glove.6B/glove.6B.{}d.txt".format(dim_word)
     # trimmed embeddings (created from glove_filename with build_data.py)
-    filename_trimmed = "data/Embeddings/glove.6B.{}d.trimmed.npz".format(dim_word)
+    #filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
     use_pretrained = True
 
     # dataset
@@ -73,10 +81,6 @@ class Config():
     # filename_train = "data/coNLL/eng/eng.train.iob"
 
     #>>>>>>>>>>>>>>>>>>Training and testing files<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    filename_dev = filename_test = "data/Resttest_data.txt"
-    #filename_dev = filename_test =
-    filename_train = "data/Resttrain_data.txt" # test
-
     max_iter = None # if not None, max number of examples in Dataset
 
     # vocab (created from dataset with build_data.py)
@@ -86,23 +90,29 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs          = 15
+    nepochs          = 25
     dropout          = 0.5
     batch_size       = 25
     lr_method        = "adagrad"
     lr               = 0.02
-    lr_decay         = 0.6
+    lr_decay         = 0.9
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 8
 
     # model hyperparameters
     hidden_size_char = 100 # lstm on chars
     hidden_size_lstm = 300 # lstm on word embeddings
+    seq2seq_enc_hidden_size = 50
+    seq2seq_dec_hidden_size = seq2seq_enc_hidden_size*2
 
     # NOTE: if both chars and crf, only 1.6x slower on GPU
     use_crf = True # if crf, training is 1.7x slower on CPU
     use_chars = False # if char embedding, training is 3.5x slower on CPU
+    use_seq2seq = True
 
+    seq2seq_trained= False
+
+    
     def gen_model_extra_str(hidden_size_lstm,use_crf,use_chars):
 	s = "bilstm{}".format(hidden_size_lstm)
 	if(use_crf):
@@ -111,13 +121,22 @@ class Config():
 	    s+='_chars'
 
 	return s
-    #>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
-    domain = "Rest"#"Laptop"
-    embedding_name = "Glove_200d"
+    #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
+    domain = domain_train = "Rest"
+    domain_test = "Rest"
+    embedding_name = "Geo_200d"
+    filename_trimmed = "data/Embeddings/Pruned/differential_Rest_200d.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
+ 
     use_CPU_only = True#False#True
+    #NOTE
     model_already_exists = True #False#os.path.isdir(dir_output)
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars)
-    dir_output = "results/{}_{}_{}/".format(domain, embedding_name, extra)
+    filename_dev = filename_test = "data/{}test_data.txt".format(domain_test)#"data/Resttest_data.txt"
+    #filename_dev = filename_test =
+    filename_train = "data/{}train_data.txt".format(domain_train)#"data/Resttrain_data.txt" # test
+
+
+    dir_output = "results/{}_{}_{}/".format(domain_train, embedding_name, extra)
     
     dir_model  = dir_output + "model.weights/"
 
