@@ -67,8 +67,8 @@ class BaseModel(object):
             self.sess = tf.Session(config=config)
         else:
             self.sess = tf.Session()
-            self.sess.run(tf.global_variables_initializer())
-            self.saver = tf.train.Saver()
+        self.sess.run(tf.global_variables_initializer())
+        self.saver = tf.train.Saver()
 
 
     def restore_session(self, dir_model):

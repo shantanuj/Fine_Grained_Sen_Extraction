@@ -119,7 +119,7 @@ class Config():
  
     use_CPU_only = True#False#True
     #NOTE
-    model_already_exists = False#os.path.isdir(dir_output)
+    model_already_exists = True#os.path.isdir(dir_output)
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars)
     filename_dev = filename_test = "data/{}test_data.txt".format(domain_test)#"data/Resttest_data.txt"
     #filename_dev = filename_test =
