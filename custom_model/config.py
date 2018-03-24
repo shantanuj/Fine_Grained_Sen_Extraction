@@ -91,7 +91,7 @@ class Config():
     # training
     train_embeddings = False
     nepochs          = 2
-    dropout          = 0.5
+    dropout          = 1#0.5
     batch_size       = 25
     seq2seq_batch_size = 25
     lr_method        = "adagrad"
