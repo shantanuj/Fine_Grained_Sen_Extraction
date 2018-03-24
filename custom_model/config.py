@@ -90,7 +90,7 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs          = 2
+    nepochs          = 20
     dropout          = 1#0.5
     batch_size       = 25
     seq2seq_batch_size = 25
@@ -129,11 +129,11 @@ class Config():
     domain = domain_train = "Rest"
     domain_test = "Rest"
     embedding_name = "Geo_200d"
-    filename_trimmed = "data/Embeddings/Pruned/differential_Rest_200d.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
+    filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
  
     use_CPU_only = True#False#True
     #NOTE
-    model_already_exists = False #False#os.path.isdir(dir_output)
+    model_already_exists = False#os.path.isdir(dir_output)
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars,use_seq2seq)
     filename_dev = filename_test = "data/{}test_data.txt".format(domain_test)#"data/Resttest_data.txt"
     #filename_dev = filename_test =
