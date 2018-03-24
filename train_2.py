@@ -1,6 +1,6 @@
-from model.data_utils import CoNLLDataset
-from model.ner_model import NERModel
-from model.config import Config
+from custom_model.data_utils import CoNLLDataset
+from custom_model.ner_model import NERModel
+from custom_model.config import Config
 
 
 def main():
@@ -11,7 +11,7 @@ def main():
     model = NERModel(config)
     model.build()
     if(config.model_already_exists):
-	print("Training existing model")
+        print("Training existing model")
         model.restore_session(config.dir_model) # optional, restore weights
     # model.reinitialize_weights("proj")
 

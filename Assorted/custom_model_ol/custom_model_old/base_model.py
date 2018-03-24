@@ -62,13 +62,13 @@ class BaseModel(object):
         """Defines self.sess and initialize the variables"""
         self.logger.info("Initializing tf session")
         #For only CPU use
-        if(self.config.use_CPU_only):
+	if(self.config.use_CPU_only):
             config = tf.ConfigProto(device_count = {'GPU': 0})
             self.sess = tf.Session(config=config)
-        else:
-            self.sess = tf.Session()
-            self.sess.run(tf.global_variables_initializer())
-            self.saver = tf.train.Saver()
+	else:
+	    self.sess = tf.Session()
+        self.sess.run(tf.global_variables_initializer())
+        self.saver = tf.train.Saver()
 
 
     def restore_session(self, dir_model):
@@ -106,29 +106,7 @@ class BaseModel(object):
         self.file_writer = tf.summary.FileWriter(self.config.dir_output,
                 self.sess.graph)
 
-    def train_seq2seq(self, train, dev):
-        best_score = 0
-        nepoch_no_imprv = 0 # for early stopping
-        self.add_summary() # tensorboard
-        for epoch in range(self.config.nepochs):
-            self.logger.info("Epoch {:} out of {:}".format(epoch + 1,
-                        self.config.nepochs))
 
-            score = self.run_epoch_seq2seq(train, dev, epoch)
-            self.config.lr *= self.config.lr_decay
-            #Early stopping
-            if score <= best_score: #loss is being used, therefore lesser than is better
-                nepoch_no_imprv = 0
-                self.save_session()
-                best_score = score
-                self.logger.info("- new best score!")
-            else:
-                nepoch_no_imprv += 1
-                if nepoch_no_imprv >= self.config.nepoch_no_imprv:
-                    self.logger.info("- early stopping {} epochs without "\
-                            "improvement".format(nepoch_no_imprv))
-                    break
-        
     def train(self, train, dev):
         """Performs training with early stopping and lr exponential decay
 

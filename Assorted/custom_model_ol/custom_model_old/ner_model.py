@@ -80,7 +80,7 @@ class NERModel(BaseModel):
             feed[self.word_lengths] = word_lengths
 
         if labels is not None:
-            labels, _ = pad_sequences(labels, self.config.vocab_tags['O'])
+            labels, _ = pad_sequences(labels, 0)
             feed[self.labels] = labels
 
         if lr is not None:
@@ -181,7 +181,23 @@ class NERModel(BaseModel):
             pred = tf.matmul(output, W) + b
             self.logits = tf.reshape(pred, [-1, nsteps, self.config.ntags])
 
+    def get_word_dropped_batch(self, word_seq_batch, word_drop_indices_batch):
+	##NOTE :Currently we don't use word_drop_indices_batch
+	
+    
+    def bridge_seq2seq(self):
+	if self.use_seq2seq:
+	   
+	#1)  Take in word embeddings tensor AND word sequence tensor 
+	#2) NOTE For future we will use the following to avoid excess seq2seq encoder state computations: 
+	   #A) Drop index tensor-> Specifies 1 for which index has to be dropped (based on heuristic, high positive models)
+	   #B) Seq length --> Avoid computations for non-index words
 
+	# THerefore here we skip to taking the  word embeddings tensor directly 
+
+	#SINCE word embedding lookup is an batch operation. Making a new batch for seq2seq is easier and less complex
+	   word_drops_batch =  
+ 
     def add_pred_op(self):
         """Defines self.labels_pred
 

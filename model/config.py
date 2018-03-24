@@ -47,6 +47,7 @@ class Config():
         self.nchars     = len(self.vocab_chars)
         self.ntags      = len(self.vocab_tags)
 
+	print(self.vocab_tags)
         # 2. get processing functions that map str -> id
         self.processing_word = get_processing_word(self.vocab_words,
                 self.vocab_chars, lowercase=True, chars=self.use_chars)
@@ -111,20 +112,21 @@ class Config():
 
 	return s
     #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
-    domain = "Laptop"#"Rest"
+    domain = domain_train = "Rest"
+    domain_test = "Rest"
     embedding_name = "Geo_200d"
-    filename_trimmed = "data/Embeddings/Pruned/differential_Laptop_200d.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
+    filename_trimmed = "data/Embeddings/Pruned/differential_Rest_200d.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
  
     use_CPU_only = True#False#True
     #NOTE
-    model_already_exists = True #False#os.path.isdir(dir_output)
+    model_already_exists = False#os.path.isdir(dir_output)
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars)
-    filename_dev = filename_test = "data/Laptoptest_data.txt"#"data/Resttest_data.txt"
+    filename_dev = filename_test = "data/{}test_data.txt".format(domain_test)#"data/Resttest_data.txt"
     #filename_dev = filename_test =
-    filename_train = "data/Laptoptrain_data.txt"#"data/Resttrain_data.txt" # test
+    filename_train = "data/{}train_data.txt".format(domain_train)#"data/Resttrain_data.txt" # test
 
 
-    dir_output = "results/{}_{}_{}/".format(domain, embedding_name, extra)
+    dir_output = "results/{}_{}_{}/".format(domain_train, embedding_name, extra)
     
     dir_model  = dir_output + "model.weights/"
 

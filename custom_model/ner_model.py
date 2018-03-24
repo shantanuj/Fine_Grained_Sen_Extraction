@@ -6,7 +6,7 @@ import tensorflow as tf
 from .data_utils import minibatches, pad_sequences, get_chunks
 from .general_utils import Progbar
 from .base_model import BaseModel
-
+from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple
 
 class NERModel(BaseModel):
     """Specialized class of Model for NER"""
@@ -35,7 +35,8 @@ class NERModel(BaseModel):
         self.word_lengths = tf.placeholder(tf.int32, shape=[None, None],
                         name="word_lengths")
 	#to be used for seq2seq decoder
-	self.decoder_targets = tf.placeholder(tf.int32, shape = [None, None], name="decoder_targets")
+        if(self.config.use_seq2seq):
+            self.decoder_targets = tf.placeholder(tf.int32, shape = [None, None], name="decoder_targets")
         # shape = (batch size, max length of sentence in batch)
         self.labels = tf.placeholder(tf.int32, shape=[None, None],
                         name="labels")
@@ -93,10 +94,12 @@ class NERModel(BaseModel):
 
         if dropout is not None:
             feed[self.dropout] = dropout
-
+        if (self.config.use_seq2seq):
+            feed[self.decoder_targets] = word_ids
         return feed, sequence_lengths
 
-
+    
+    
     def add_word_embeddings_op(self):
         """Defines self.word_embeddings
 
@@ -108,18 +111,18 @@ class NERModel(BaseModel):
         with tf.variable_scope("words"):
             if self.config.embeddings is None:
                 self.logger.info("WARNING: randomly initializing word vectors")
-                _word_embeddings = tf.get_variable(
+                self._word_embeddings = tf.get_variable(
                         name="_word_embeddings",
                         dtype=tf.float32,
                         shape=[self.config.nwords, self.config.dim_word])
             else:
-                _word_embeddings = tf.Variable(
+                self._word_embeddings = tf.Variable(
                         self.config.embeddings,
                         name="_word_embeddings",
                         dtype=tf.float32,
                         trainable=self.config.train_embeddings)
 
-            word_embeddings = tf.nn.embedding_lookup(_word_embeddings,
+            word_embeddings = tf.nn.embedding_lookup(self._word_embeddings,
                     self.word_ids, name="word_embeddings")
 
         with tf.variable_scope("chars"):
@@ -168,44 +171,82 @@ class NERModel(BaseModel):
 """
 #NOTE: 1) There might be a more efficient manner to load and train the seq2seq separately, and then just use the final weights. 
 #NOTE: 2) Blocking gradients should not impact elements linked to this
-	if(self.config.use_seq2seq):
-		with tf.variable_scope('seq2seq_encoder'):
-		    encoder_cell = LSTMCell(self.config.seq2seq_enc_hidden_size)
-		    ((encoder_fw_outputs, 
-		      encoder_bw_outputs), 
-		      (encoder_fw_final_state,
-		       encoder_bw_final_state)) = (
-			 tf.nn.bidirectional_dynamic_rnn(cell_fw=encoder_cell, cell_bw=encoder_cell, inputs = self.word_embeddings, sequence_length = self.sequence_lengths, dtype = tf.float32, time_major=True))
-		    #encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs),2)
-		    encoder_final_state_c = tf.concat((encoder_fw_final_state.c, encoder_bw_final_state.c),1)
-		    encoder_final_state_h = tf.concat((encoder_fw_final_state.h, encoder_bw_final_state.h),1)
+        if(self.config.use_seq2seq):
+            with tf.variable_scope('seq2seq_encoder'):
+                encoder_cell = LSTMCell(self.config.seq2seq_enc_hidden_size)
+                ((encoder_fw_outputs, encoder_bw_outputs), (encoder_fw_final_state, encoder_bw_final_state)) = (tf.nn.bidirectional_dynamic_rnn(cell_fw=encoder_cell, cell_bw=encoder_cell, inputs = self.word_embeddings, sequence_length = self.sequence_lengths, dtype = tf.float32, time_major=True))
+               #encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs),2)
+                encoder_final_state_c = tf.concat((encoder_fw_final_state.c, encoder_bw_final_state.c),1)
+                encoder_final_state_h = tf.concat((encoder_fw_final_state.h, encoder_bw_final_state.h),1)
 
-		    self.encoder_final_state = LSTMStateTuple(c= encoder_final_state_c, h=encoder_final_state_h)
+                self.encoder_final_state = LSTMStateTuple(c= encoder_final_state_c, h=encoder_final_state_h)
 
-		    self.encoder_encoded_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)
-		    if(self.config.seq2seq_trained):
-		        self.encoder_encoded_concat_rep = tf.stop_gradient(self.encoder_encoded_concat_rep) 
-		    
+                self.encoder_encoded_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)
+                #NOTE: Very important to stop gradient flow once trained
+                if(self.config.seq2seq_trained):
+                    self.encoder_encoded_concat_rep = tf.stop_gradient(self.encoder_encoded_concat_rep) 
+    
+        
+            with tf.variable_scope('seq2seq_decoder'):
+                encoder_max_time, batch_size = tf.unstack(tf.shape(self.word_ids))
+                decoder_cell = LSTMCell(self.config.seq2seq_dec_hidden_size)
+                decoder_lengths = self.sequence_lengths + 3 #2 additional terms
+                W_dec = tf.Variable(tf.random_uniform([self.config.seq2seq_dec_hidden_size, self.config.nwords],-1,1), dtype = tf.float32)
+                b_dec = tf.Variable(tf.zeros([self.config.nwords]), dtype = tf.float32)
+   
+                eos_time_slice = self.config.EOS*tf.ones([batch_size], dtype=tf.int32, name = "EOS")
+                pad_time_slice = self.config.PAD*tf.ones([batch_size], dtype = tf.int32, name="PAD")
 
-		with tf.variable_scope('seq2seq_decoder'):
-		
+                eos_step_embedded = tf.nn.embedding_lookup(self._word_embeddings, eos_time_slice)
+                pad_step_embedded = tf.nn.embedding_lookup(self._word_embeddings, pad_time_slice)
+            
+            def loop_fn_initial():
+                initial_elements_finished = (0 >= decoder_lengths)  # all False at the initial step
+                initial_input = eos_step_embedded
+                initial_cell_state = self.encoder_final_state
+                initial_cell_output = None
+                initial_loop_state = None  # we don't need to pass any additional information
+                return (initial_elements_finished,initial_input,initial_cell_state,initial_cell_output,initial_loop_state)
 
-                    encoder_max_time, batch_size = tf.unstack(tf.shape(self.word_ids))
+            def loop_fn_transition(time, previous_output, previous_state, previous_loop_state):
+                def get_next_input():
+                    output_logits = tf.add(tf.matmul(previous_output, W_dec), b_dec)
+                    prediction = tf.argmax(output_logits, axis=1)
+                    next_input = tf.nn.embedding_lookup(self._word_embeddings, prediction)
+                    return next_input
 
+                elements_finished = (time >= decoder_lengths)
+                
+                finished = tf.reduce_all(elements_finished) # -> boolean scalar
+                input = tf.cond(finished, lambda: pad_step_embedded, get_next_input)
+                state = previous_state
+                output = previous_output
+                loop_state = None
+                
+                return (elements_finished, input, state, output, loop_state)
 
-                    decoder_cell = LSTMCell(self.config.seq2seq_dec_hidden_size)
-		    decoder_lengths = self.sequence_lengths + 3 #2 additional terms
-		    W_dec = tf.Variable(tf.random_uniform([self.config.seq2seq_dec_hidden_size, self.config.nwords],-1,1), dtype = tf.float32)
-		    b = tf.Variable(tf.zeros([self.config.nwords]), dtype = tf.float32)
-		   
-		    eos_time_slice = self.config.EOS*tf.ones([batch_size], dtype=tf.int32, name = "EOS")
-		    pad_time_slice = self.config.PAD*tf.ones([batch_size], dtype = tf.int32, name="PAD")
-
-		    eos_step_embedded = tf.nn.embedding_lookup(_word_embeddings, eos_time_slice)
-		    pad_step_embedded = tf.nn.embedding_lookup(_word_embeddings, pad_time_slice)
-
-
-
+            def loop_fn(time, previous_output, previous_state, previous_loop_state):
+                if previous_state is None:    # time == 0
+                    assert previous_output is None and previous_state is None
+                    return loop_fn_initial()
+                else:
+                    return loop_fn_transition(time, previous_output, previous_state, previous_loop_state)
+            with tf.variable_scope("seq2seq_decoding"):
+                decoder_outputs_ta, decoder_final_state, _ = tf.nn.raw_rnn(decoder_cell, loop_fn)
+                decoder_outputs = decoder_outputs_ta.stack()
+            
+                decoder_max_steps, decoder_batch_size, decoder_dim = tf.unstack(tf.shape(decoder_outputs))
+                decoder_outputs_flat = tf.reshape(decoder_outputs, (-1, decoder_dim))
+                decoder_logits_flat = tf.add(tf.matmul(decoder_outputs_flat, W_dec), b_dec)
+                self.decoder_logits = tf.reshape(decoder_logits_flat, (decoder_max_steps, decoder_batch_size, self.config.nwords))
+                decoder_prediction = tf.argmax(self.decoder_logits, 2)
+      
+    #If training of seq2seq is to be done, then we need to add loss and cost function to the graph
+       # if(self.config.train_seq2seq and self.config.use_seq2seq):
+        #    with tf.variable_scope('seq2seq_training'):
+         #       stepwise_cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels = tf.one_hot(decoder_targets, depth = self.config.nwords, dtype = tf.float32), logits = self.decoder_logits,)
+          #      self.loss = tf.reduce_mean(stepwise_cross_entropy)
+            
     def add_logits_op(self):
         """Defines self.logits
 
@@ -250,18 +291,24 @@ class NERModel(BaseModel):
 
     def add_loss_op(self):
         """Defines the loss"""
-        if self.config.use_crf:
+        
+        if self.config.use_crf and not self.config.train_seq2seq:
+            
             log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
                     self.logits, self.labels, self.sequence_lengths)
             self.trans_params = trans_params # need to evaluate it for decoding
             self.loss = tf.reduce_mean(-log_likelihood)
-        else:
+        elif(not self.config.train_seq2seq): #Use when seq2seq has been trained, otherwise loss is defined in seq2seq
             losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
                     logits=self.logits, labels=self.labels)
             mask = tf.sequence_mask(self.sequence_lengths)
             losses = tf.boolean_mask(losses, mask)
             self.loss = tf.reduce_mean(losses)
 
+        elif(self.config.train_seq2seq and self.config.use_seq2seq):
+            
+            self.stepwise_cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels = tf.one_hot(self.decoder_targets, depth = self.config.nwords, dtype = tf.float32), logits = self.decoder_logits,)
+            self.loss = tf.reduce_mean(self.stepwise_cross_entropy)
         # for tensorboard
         tf.summary.scalar("loss", self.loss)
 
@@ -270,10 +317,16 @@ class NERModel(BaseModel):
         # NER specific functions
         self.add_placeholders()
         self.add_word_embeddings_op()
-        self.add_logits_op()
-        self.add_pred_op()
-        self.add_loss_op()
+        if(not self.config.use_seq2seq):
+            self.add_logits_op()
+            self.add_pred_op()
+            self.add_loss_op()
+        else:
 
+            self.add_logits_op()
+            self.add_seq2seq()
+            self.add_pred_op()
+            self.add_loss_op()		
         # Generic functions that add training op and initialize session
         self.add_train_op(self.config.lr_method, self.lr, self.loss,
                 self.config.clip)
@@ -312,6 +365,33 @@ class NERModel(BaseModel):
 
             return labels_pred, sequence_lengths
 
+
+    def run_epoch_seq2seq(self, train, dev, epoch):
+        """for seq2seq training"""
+        """train is a list of sequences"""
+        """dev is also a list of sequences"""
+        
+        batch_size = self.config.seq2seq_batch_size
+        nbatches = (len(train) + batch_size - 1) // batch_size
+        prog = Progbar(target=nbatches)
+        #train_op = tf.train.AdamOptimizer(learning_rate= self.config.lr).minimize(self.loss)
+        #train_batch_generator = self.gen_batch_seq2seq(train,batch_size)
+        for i, (words, labels) in enumerate(minibatches(train, batch_size)):
+            df = self.next_feed(words, lr=self.config.lr, dropout = 1.0)
+          
+          #  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_encoded_concat_rep], feed_dict =df)
+            _, train_loss, summary = self.sess.run([self.train_op, self.loss, self.merged], feed_dict = df)
+            #print(cross_entropy)
+            #print(decoder_logits[0])
+            #print(encoder_useful_state[0])
+    	    prog.update(i + 1, [("train loss", train_loss)])
+       
+        for words, labels in minibatches(dev, self.config.batch_size):
+            dev_batch = self.feed_enc(words)
+            te_loss, encoder_useful_state = self.sess.run([self.loss,self.encoder_encoded_concat_rep], dev_batch)
+        msg = "Autoencoding testing loss: {}%2f".format(te_loss)
+        self.logger.info(msg)
+        return te_loss
 
     def run_epoch(self, train, dev, epoch):
         """Performs one complete pass over the train set and evaluate on dev
@@ -515,3 +595,116 @@ class NERModel(BaseModel):
         preds = [self.idx_to_tag[idx] for idx in list(pred_ids[0])]
 
         return preds
+
+
+    def gen_batch_seq2seq(self, idd_data, batch_size):
+        #np.random.shuffle(idd_data)
+        #batch_size = self.config.seq2seq_batch_size
+        print("Batch size", batch_size)
+        rem = len(idd_data)%(self.config.seq2seq_batch_size)
+        num_batches = (len(idd_data)/self.config.seq2seq_batch_size)
+        if(rem>0):
+            num_batches = num_batches+1
+        print(idd_data)
+        for i in range(num_batches):
+            if(i==num_batches -1 and (not rem==0)):
+                yield(idd_data[i*batch_size:])
+            else:
+                yield(idd_data[i*batch_size:(i+1)*batch_size])
+    
+                             
+    def batch_modify(self, inputs, max_sequence_length=None):
+        """
+    Args:
+        inputs:
+            list of sentences (integer lists)
+        max_sequence_length:
+            integer specifying how large should `max_time` dimension be.
+            If None, maximum sequence length would be used
+    
+    Outputs:
+        inputs_time_major:
+            input sentences transformed into time-major matrix 
+            (shape [max_time, batch_size]) padded with 0s
+        sequence_lengths:
+            batch-sized list of integers specifying amount of active 
+            time steps in each input sequence
+        """
+    
+        sequence_lengths = [len(seq) for seq in inputs]
+        batch_size = len(inputs)
+    
+        if max_sequence_length is None:
+            max_sequence_length = max(sequence_lengths)
+    
+        inputs_batch_major = self.config.PAD*np.ones(shape=[batch_size, max_sequence_length], dtype=np.int32) # == PAD
+    
+        for i, seq in enumerate(inputs):
+            for j, element in enumerate(seq):
+                inputs_batch_major[i, j] = element
+
+    # [batch_size, max_time] -> [max_time, batch_size]
+        inputs_time_major = inputs_batch_major.swapaxes(0, 1)
+
+        return inputs_time_major, sequence_lengths
+                             
+    def next_feed(self, batch, lr = 0.02, labels = None, dropout= 1.0):
+        encoder_inputs_, encoder_input_lengths_ = self.batch_modify(batch)
+        #print(self.config.EOS, self.config.PAD)
+        decoder_targets_, _ = self.batch_modify(
+            [(sequence) + [self.config.EOS] + [self.config.PAD] * 2 for sequence in batch] #additional 3 spaces
+        )
+        feed = {
+            self.word_ids: encoder_inputs_,
+            self.sequence_lengths: encoder_input_lengths_,
+            self.decoder_targets: decoder_targets_,
+        }
+        if self.config.use_chars:
+            feed[self.char_ids] = char_ids
+            feed[self.word_lengths] = word_lengths
+	
+        feed[self.labels] = decoder_targets_
+ 
+        if labels is not None:
+            labels, _ = pad_sequences(labels, self.config.vocab_tags['O'])
+            feed[self.labels] = labels
+	
+        if lr is not None:
+            feed[self.lr] = self.config.lr
+
+        if dropout is not None:
+            feed[self.dropout] = dropout
+        return feed
+
+    def feed_enc(self, enc_batch, lr = 0.02, labels = None, dropout= 1.0):
+    
+        
+        encoder_inputs_, encoder_input_lengths_ = self.batch_modify(enc_batch)
+        
+        feed = {
+            self.word_ids: encoder_inputs_, 
+            self.sequence_lengths: encoder_input_lengths_,
+            self.decoder_targets: encoder_inputs_}
+        
+        if self.config.use_chars:
+            feed[self.char_ids] = char_ids
+            feed[self.word_lengths] = word_lengths
+        
+        feed[self.labels] = encoder_inputs_
+        if labels is not None:
+            labels, _ = pad_sequences(labels, self.config.vocab_tags['O'])
+            feed[self.labels] = labels
+	
+        if lr is not None:
+            feed[self.lr] = self.config.lr
+
+        if dropout is not None:
+            feed[self.dropout] = dropout
+            
+            
+        
+        return feed
+                     
+   
+                             
+   
