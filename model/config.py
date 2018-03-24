@@ -110,17 +110,18 @@ class Config():
 	    s+='_chars'
 
 	return s
-    #>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
-    domain = "Rest"#"Laptop"
-    embedding_name = "W2V_200d"
-    filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
+    #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
+    domain = "Laptop"#"Rest"
+    embedding_name = "Geo_200d"
+    filename_trimmed = "data/Embeddings/Pruned/differential_Laptop_200d.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
  
     use_CPU_only = True#False#True
-    model_already_exists = True#False#os.path.isdir(dir_output)
+    #NOTE
+    model_already_exists = True #False#os.path.isdir(dir_output)
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars)
-    filename_dev = filename_test = "data/Resttest_data.txt"
+    filename_dev = filename_test = "data/Laptoptest_data.txt"#"data/Resttest_data.txt"
     #filename_dev = filename_test =
-    filename_train = "data/Resttrain_data.txt" # test
+    filename_train = "data/Laptoptrain_data.txt"#"data/Resttrain_data.txt" # test
 
 
     dir_output = "results/{}_{}_{}/".format(domain, embedding_name, extra)
