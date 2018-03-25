@@ -405,9 +405,9 @@ class NERModel(BaseModel):
             df = self.next_feed(words, lr=self.config.lr, dropout = self.config.dropout_seq2seq)
           
           #  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_concat_rep], feed_dict =df)
-            _, train_loss, summary = self.sess.run([self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
-            
-	   #print("ENC_TIME",enc_time)
+            enc, _, train_loss, summary = self.sess.run([self.encoder_concat_rep,self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
+            print("enc_shape:",np.array(enc).shape)
+	    #print("ENC_TIME",enc_time)
            # print("BATCH_SIZE",b_size) 
             #print(cross_entropy)
             #print(decoder_logits[0])
