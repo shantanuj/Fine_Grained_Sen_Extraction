@@ -168,13 +168,60 @@ class NERModel(BaseModel):
 
         self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout)
 
-   # def bridge_process(self, input_word_seq_tensor, sequence_lengths, max_seq_length=None):
-    #    if(max_seq_length is None):
-     #       max_seq_length = 
-    #def add_bridge(self):
-        
-        
-        
+    #if(self.config.use_seq2seq):
+    def word_drop_pre_bridge(self, input_word_seq_tensor, sequence_lengths, max_seq_length=None):
+      	#NOTE: There are no variables in the function, so shouldn't matter for the tf graph construction (hopefully)
+	 """ This function is only used during ABSA task. It takes in the input word sequence tensor and sequence lengths, and outputs a modified batch  where for each sentence, a row exists with normal sentence, and corresponding n rows with 1 missing word. 
+	Same applies for the sequence lengths.
+
+	In essence:
+	For word_ids: Input 2d (n_batch,max_sequence_length) --> Intermediate 3d (n_batch, max_sequence_length, max_sequence_length) --> Output 2d (n_batch*max_sequence_length, max_sequence_length) --> Output 2d time major (max_sequence_length,n_batch*max_sequence_length)
+	For seq_lens: Input 1d (n_batch,) --> Intermediate 2d (n_batch, max_sequence_length,) --> Output 1d (n_batch*max_sequence_length)
+	"""
+	if(max_seq_length is None):
+            max_seq_length = input_word_seq_tensor.shape[-1]
+	#1) Create mask to select word indices ( 1 dropped every time)
+	np_mask_matrix = np.ones((max_seq_length, max_seq_length))
+	a = np.array(range(max_seq_length))
+	np_mask_matrix[np.arange(len(a)),a] = 0 #go through each row, and for that particular column set 0 (opposite of a diagonal matrix)
+	tf_mask_matrix = tf.convert_to_tensor(np_mask_matrix, dtype="bool")
+	padding = tf.constant([[0,0],[0,1]],dtype="int32")
+
+	#2nd operation add dimensions to both input tensors`
+    	resultant_tensor = tf.expand_dims(input_word_seq_tensor,0)
+	tensor_seq_lengths = tf.expand_dim(seq_lengths, 0)
+	
+	#3d operation--> Make tensor for seq_lengths for dropped indices (they're always 1 less)
+	seq_lengths_for_dropped = tf.expand_dims(seq_lengths - tf.ones(shape=seq_lengths.shape[0], dtype ="int32"),0)
+
+	#4th operation --> looped Applying mask matrix to obtain dropped word ids; each result is appended to row of resultant_tensor
+	for drop_index in range(max_seq_length):
+	    f = lambda word_seq: tf.boolean_mask(word_seq, tf_mask_matrix[:,drop_index])
+	    resultant_tensor = tf.concat([resultant_tensor, tf.expand_dims(tf.pad(tf.map_fn(f, input_word_seq_tensor), padding, "CONSTANT"),0)],0)
+	    tensor_seq_lengths = tf.concat([tensor_seq_lengths, seq_lengths_for_dropped],0)
+
+	#5th operation-> reshape of tensor
+	#NOTE: The tensor is shaped such that the first n rows correspond to the first sentence (n is the sequence length)
+	resultant_tensor = tf.reshape(resultant_tensor, [resultant_tensor.shape[0]*resultant_tensor.shape[1], resultant_tensor.shape[2]])
+	tensor_seq_lengths = tf.reshape(tensor_seq_lengths, [tensor_seq_lengths.shape[0]*tensor_seq_lengths.shape[1],])
+	#NOTE: Converting the tensor from batch*time -> time*batch BECAUSE OUR SPECIFIC ENCODER expects in that manner
+	resultant_tensor = resultant_tensor.swapaxes(0,1) 
+	return resultant_tensor, tensor_seq_lengths
+
+    def bridge_seq2seq_embeddings(self):
+	#This is to convert the seq2seq outputs of shape 2d Time*Batch --> Perform comparison of missing word with all words-->convert into 3d shape(Batch*Time*Embeds), and then concatenate as batch*Time*Embeds with word_embeddings
+	seq2seq_encoder_out = tf.reshape(self.encoder_concat_rep,[self.word_ids.shape[-1]+1, self.word_ids.shape[0],self.config.seq2seq_enc_hidden_size*4]) #Batch_size*Dims output
+	self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, perm=[1,0,2])
+	assert self.seq2seq_encoder_embeds.shape[0] == self.word_embeddings.shape[0]
+	self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
+				
+    def convert_tensors(self):
+	#NOTE Word ids during training of seq2seq are of different format(time*batch) whereas in absa task they are fed normal as batch*time) 
+	if(self.config.train_seq2seq):
+	    self.seq2seq_input_sequences, self.seq2seq_input_sequence_lengths =  self.word_ids, self.sequence_lengths
+        else:
+	    self.seq2seq_input_sequnces, self.seq2seq_input_sequence_lengths = self.bridge_process(self.word_ids, self.sequence_lengths)
+
     def add_seq2seq(self):
 	"""This stores the seq2seq model which will be imported as part of the training graph since other options of creating a separate training graph/session and importing seemed lengthy. 
 
@@ -186,8 +233,10 @@ class NERModel(BaseModel):
 #NOTE: 2) Blocking gradients should not impact elements linked to this
         if(self.config.use_seq2seq):
             with tf.variable_scope('seq2seq_encoder'):
+		self.seq2seq_input_sequences_embeds = tf.nn.embedding_lookup(self._word_embeddings, self.seq2seq_input_sequences, name="word_embeddings")
+
                 encoder_cell = LSTMCell(self.config.seq2seq_enc_hidden_size)
-                ((encoder_fw_outputs, encoder_bw_outputs), (encoder_fw_final_state, encoder_bw_final_state)) = (tf.nn.bidirectional_dynamic_rnn(cell_fw=encoder_cell, cell_bw=encoder_cell, inputs = self.word_embeddings, sequence_length = self.sequence_lengths, dtype = tf.float32, time_major=True))
+                ((encoder_fw_outputs, encoder_bw_outputs), (encoder_fw_final_state, encoder_bw_final_state)) = (tf.nn.bidirectional_dynamic_rnn(cell_fw=encoder_cell, cell_bw=encoder_cell, inputs = self.seq2seq_input_sequences_embeds, sequence_length = self.seq2seq_input_sequence_lengths, dtype = tf.float32, time_major=True))
                #encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs),2)
                 encoder_final_state_c = tf.concat((encoder_fw_final_state.c, encoder_bw_final_state.c),1)
                 encoder_final_state_h = tf.concat((encoder_fw_final_state.h, encoder_bw_final_state.h),1)
@@ -201,7 +250,7 @@ class NERModel(BaseModel):
     
         
             with tf.variable_scope('seq2seq_decoder'):
-                encoder_max_time, batch_size = tf.unstack(tf.shape(self.word_ids))
+                encoder_max_time, batch_size = tf.unstack(tf.shape(self.seq2seq_input_sequences))
          	#self.encoder_max = encoder_max_time
 		#self.batch_max = batch_size 
                 decoder_cell = LSTMCell(self.config.seq2seq_dec_hidden_size)

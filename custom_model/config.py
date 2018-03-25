@@ -92,7 +92,8 @@ class Config():
     train_embeddings = False
     nepochs          = 100
     #NOTE:
-    dropout          = 1#0.5
+    dropout          = 0.5
+    dropout_seq2seq  = 0.8
     batch_size       = 25
     seq2seq_batch_size = 25
     lr_method        = "adagrad"
@@ -114,8 +115,8 @@ class Config():
     use_seq2seq = True #Does model use seq2seq
 
    #NOTE
-    seq2seq_trained= False#True# False #Has seq2seq been trained
-    train_seq2seq = True#False #True #Use model to train seq2seq
+    seq2seq_trained= True #False#True# False #Has seq2seq been trained
+    train_seq2seq = False #True#False #True #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     
     def gen_model_extra_str(hidden_size_lstm,use_crf,use_chars,use_seq2seq):
