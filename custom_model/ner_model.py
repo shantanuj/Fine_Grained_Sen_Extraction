@@ -332,7 +332,7 @@ class NERModel(BaseModel):
             self.add_pred_op()
             self.add_loss_op()		
         
-        if(self.config.train_seq2seq):#This is also a node in the graph and hence needs to be stored
+        if(self.config.use_seq2seq):#This is also a node in the graph and hence needs to be stored
         # Generic functions that add training op and initialize session
             self.add_train_op(self.config.lr_method, self.lr, self.seq2seq_loss,
                 self.config.clip, True)
