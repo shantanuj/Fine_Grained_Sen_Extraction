@@ -23,6 +23,6 @@ def main():
     
     # train model
     model.train_seq2seq(train, dev)
-
+    #model.train(train, dev) #NOTE: SMALL QUICK FIX FOR PROBLEM IN RESTORING Lstm after training seq2seq and using for absa
 if __name__ == "__main__":
     main()

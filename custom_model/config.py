@@ -90,7 +90,8 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs          = 20
+    nepochs          = 1
+    #NOTE:
     dropout          = 1#0.5
     batch_size       = 25
     seq2seq_batch_size = 25
@@ -112,8 +113,9 @@ class Config():
     use_chars = False # if char embedding, training is 3.5x slower on CPU
     use_seq2seq = True #Does model use seq2seq
 
-    seq2seq_trained= False #Has seq2seq been trained
-    train_seq2seq = True #Use model to train seq2seq
+   #NOTE
+    seq2seq_trained= True#False #Has seq2seq been trained
+    train_seq2seq = False#True #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     
     def gen_model_extra_str(hidden_size_lstm,use_crf,use_chars,use_seq2seq):
@@ -128,12 +130,13 @@ class Config():
     #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
     domain = domain_train = "Rest"
     domain_test = "Rest"
-    embedding_name = "Geo_200d"
+    embedding_name = "w2v"
     filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
  
     use_CPU_only = True#False#True
     #NOTE
-    model_already_exists = False#os.path.isdir(dir_output)
+    model_already_exists = False#True#os.path.isdir(dir_output)
+    
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars,use_seq2seq)
     filename_dev = filename_test = "data/{}test_data.txt".format(domain_test)#"data/Resttest_data.txt"
     #filename_dev = filename_test =
@@ -142,6 +145,11 @@ class Config():
 
     dir_output = "results/{}_{}_{}/".format(domain_train, embedding_name, extra)
     
+    if(not model_already_exists and os.path.exists(dir_output)):
+	x= int(input("Existing model found. Overwrite existing model or retrain existing model  (1/0)?"))
+	if(not bool(x)):
+	    model_already_exists = True
+ 
     dir_model  = dir_output + "model.weights/"
 
     path_log   = dir_output + "log.txt"

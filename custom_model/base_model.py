@@ -26,7 +26,7 @@ class BaseModel(object):
         self.sess.run(init)
 
 
-    def add_train_op(self, lr_method, lr, loss, clip=-1):
+    def add_train_op(self, lr_method, lr, loss, clip=-1,seq2seq=False):
         """Defines self.train_op that performs an update on a batch
 
         Args:
@@ -53,10 +53,14 @@ class BaseModel(object):
             if clip > 0: # gradient clipping if clip is positive
                 grads, vs     = zip(*optimizer.compute_gradients(loss))
                 grads, gnorm  = tf.clip_by_global_norm(grads, clip)
-                self.train_op = optimizer.apply_gradients(zip(grads, vs))
+		
+                train_op = optimizer.apply_gradients(zip(grads, vs))
             else:
-                self.train_op = optimizer.minimize(loss)
-
+                train_op = optimizer.minimize(loss)
+	    if(seq2seq):
+		self.seq2seq_train_op = train_op
+	    else:
+		self.train_op = train_op
 
     def initialize_session(self):
         """Defines self.sess and initialize the variables"""
@@ -107,7 +111,7 @@ class BaseModel(object):
                 self.sess.graph)
 
     def train_seq2seq(self, train, dev):
-        best_score = 0
+        best_score = 1e2
         nepoch_no_imprv = 0 # for early stopping
         self.add_summary() # tensorboard
         for epoch in range(self.config.nepochs):

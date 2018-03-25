@@ -245,7 +245,7 @@ class NERModel(BaseModel):
        # if(self.config.train_seq2seq and self.config.use_seq2seq):
         #    with tf.variable_scope('seq2seq_training'):
          #       stepwise_cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels = tf.one_hot(decoder_targets, depth = self.config.nwords, dtype = tf.float32), logits = self.decoder_logits,)
-          #      self.loss = tf.reduce_mean(stepwise_cross_entropy)
+          #      self.seq2seq_loss = tf.reduce_mean(stepwise_cross_entropy)
             
     def add_logits_op(self):
         """Defines self.logits
@@ -291,27 +291,31 @@ class NERModel(BaseModel):
 
     def add_loss_op(self):
         """Defines the loss"""
-        
-        if self.config.use_crf and not self.config.train_seq2seq:
+        if self.config.use_crf:
+        #if self.config.use_crf and not self.config.train_seq2seq:
             
             log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
                     self.logits, self.labels, self.sequence_lengths)
             self.trans_params = trans_params # need to evaluate it for decoding
             self.loss = tf.reduce_mean(-log_likelihood)
-        elif(not self.config.train_seq2seq): #Use when seq2seq has been trained, otherwise loss is defined in seq2seq
+        else: #Use when no crf and se
             losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
                     logits=self.logits, labels=self.labels)
             mask = tf.sequence_mask(self.sequence_lengths)
             losses = tf.boolean_mask(losses, mask)
             self.loss = tf.reduce_mean(losses)
 
-        elif(self.config.train_seq2seq and self.config.use_seq2seq):
+        if(self.config.use_seq2seq):
             
             self.stepwise_cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels = tf.one_hot(self.decoder_targets, depth = self.config.nwords, dtype = tf.float32), logits = self.decoder_logits,)
-            self.loss = tf.reduce_mean(self.stepwise_cross_entropy)
+            self.seq2seq_loss = tf.reduce_mean(self.stepwise_cross_entropy)
+        
         # for tensorboard
-        tf.summary.scalar("loss", self.loss)
-
+        if(self.config.train_seq2seq):
+            tf.summary.scalar("seq2seq_loss",self.seq2seq_loss)
+        else:
+            tf.summary.scalar("loss", self.loss)
+        
 
     def build(self):
         # NER specific functions
@@ -327,7 +331,12 @@ class NERModel(BaseModel):
             self.add_seq2seq()
             self.add_pred_op()
             self.add_loss_op()		
+        
+        if(self.config.train_seq2seq):#This is also a node in the graph and hence needs to be stored
         # Generic functions that add training op and initialize session
+            self.add_train_op(self.config.lr_method, self.lr, self.seq2seq_loss,
+                self.config.clip, True)
+        
         self.add_train_op(self.config.lr_method, self.lr, self.loss,
                 self.config.clip)
         self.initialize_session() # now self.sess is defined and vars are init
@@ -374,13 +383,13 @@ class NERModel(BaseModel):
         batch_size = self.config.seq2seq_batch_size
         nbatches = (len(train) + batch_size - 1) // batch_size
         prog = Progbar(target=nbatches)
-        #train_op = tf.train.AdamOptimizer(learning_rate= self.config.lr).minimize(self.loss)
+        #train_op = tf.train.AdamOptimizer(learning_rate= self.config.lr).minimize(self.seq2seq_loss)
         #train_batch_generator = self.gen_batch_seq2seq(train,batch_size)
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
             df = self.next_feed(words, lr=self.config.lr, dropout = 1.0)
           
           #  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_encoded_concat_rep], feed_dict =df)
-            _, train_loss, summary = self.sess.run([self.train_op, self.loss, self.merged], feed_dict = df)
+            _, train_loss, summary = self.sess.run([self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
             #print(cross_entropy)
             #print(decoder_logits[0])
             #print(encoder_useful_state[0])
