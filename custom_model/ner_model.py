@@ -1,3 +1,10 @@
+'''
+1) To do: Figure out line 201..
+2) Add evaluation of seq2seq -> Get predictions,  see input word_ids and output word_Ids, just print that
+3) Bridge as a function, cond decides what input to seq2seq is and edit the corresponding input to seq2seq
+
+'''
+
 import numpy as np
 import os
 import tensorflow as tf
@@ -161,7 +168,13 @@ class NERModel(BaseModel):
 
         self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout)
 
-
+   # def bridge_process(self, input_word_seq_tensor, sequence_lengths, max_seq_length=None):
+    #    if(max_seq_length is None):
+     #       max_seq_length = 
+    #def add_bridge(self):
+        
+        
+        
     def add_seq2seq(self):
 	"""This stores the seq2seq model which will be imported as part of the training graph since other options of creating a separate training graph/session and importing seemed lengthy. 
 
@@ -189,6 +202,7 @@ class NERModel(BaseModel):
         
             with tf.variable_scope('seq2seq_decoder'):
                 encoder_max_time, batch_size = tf.unstack(tf.shape(self.word_ids))
+          
                 decoder_cell = LSTMCell(self.config.seq2seq_dec_hidden_size)
                 decoder_lengths = self.sequence_lengths + 3 #2 additional terms
                 W_dec = tf.Variable(tf.random_uniform([self.config.seq2seq_dec_hidden_size, self.config.nwords],-1,1), dtype = tf.float32)
@@ -239,7 +253,7 @@ class NERModel(BaseModel):
                 decoder_outputs_flat = tf.reshape(decoder_outputs, (-1, decoder_dim))
                 decoder_logits_flat = tf.add(tf.matmul(decoder_outputs_flat, W_dec), b_dec)
                 self.decoder_logits = tf.reshape(decoder_logits_flat, (decoder_max_steps, decoder_batch_size, self.config.nwords))
-                decoder_prediction = tf.argmax(self.decoder_logits, 2)
+                self.decoder_prediction = tf.argmax(self.decoder_logits, 2)
       
     #If training of seq2seq is to be done, then we need to add loss and cost function to the graph
        # if(self.config.train_seq2seq and self.config.use_seq2seq):
@@ -386,21 +400,27 @@ class NERModel(BaseModel):
         #train_op = tf.train.AdamOptimizer(learning_rate= self.config.lr).minimize(self.seq2seq_loss)
         #train_batch_generator = self.gen_batch_seq2seq(train,batch_size)
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
+            #print("TR",len(words),len(words[0]), len(labels), len(labels[0]))
             df = self.next_feed(words, lr=self.config.lr, dropout = 1.0)
           
           #  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_concat_rep], feed_dict =df)
-            _, train_loss, summary = self.sess.run([self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
+            predictions,_, train_loss, summary = self.sess.run([self.decoder_prediction,self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
+            #print("ENC_TIME",enc_time)
+            #print("BATCH_SIZE",b_size) 
             #print(cross_entropy)
             #print(decoder_logits[0])
             #print(encoder_useful_state[0])
     	    prog.update(i + 1, [("train loss", train_loss)])
-       
+       	    if(i%50==0):
+	        print("ACTUAL,PREDICTED",words[0],predictions[0])	
         for words, labels in minibatches(dev, self.config.batch_size):
             dev_batch = self.feed_enc(words)
 	    te_loss = 5
-            encoder_useful_state = self.sess.run([self.encoder_concat_rep], dev_batch)
+            predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
+            #print("TE",len(words),len(words[0]),len(predictions), len(predictions[0]))
+        print("ACTUAL,PREDICTED",words[0],predictions[0])
         print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
-	print(len(encoder_useful_state[0][0]))
+	print(len(encoder_useful_state[0]))
 	msg = "Autoencoding testing loss: {}%2f".format(te_loss)
         self.logger.info(msg)
         return te_loss
