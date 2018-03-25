@@ -181,10 +181,10 @@ class NERModel(BaseModel):
 
                 self.encoder_final_state = LSTMStateTuple(c= encoder_final_state_c, h=encoder_final_state_h)
 
-                self.encoder_encoded_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)
+                self.encoder_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)
                 #NOTE: Very important to stop gradient flow once trained
                 if(self.config.seq2seq_trained):
-                    self.encoder_encoded_concat_rep = tf.stop_gradient(self.encoder_encoded_concat_rep) 
+                    self.encoder_concat_rep = tf.stop_gradient(self.encoder_concat_rep) 
     
         
             with tf.variable_scope('seq2seq_decoder'):
@@ -388,7 +388,7 @@ class NERModel(BaseModel):
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
             df = self.next_feed(words, lr=self.config.lr, dropout = 1.0)
           
-          #  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_encoded_concat_rep], feed_dict =df)
+          #  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_concat_rep], feed_dict =df)
             _, train_loss, summary = self.sess.run([self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
             #print(cross_entropy)
             #print(decoder_logits[0])
@@ -398,8 +398,10 @@ class NERModel(BaseModel):
         for words, labels in minibatches(dev, self.config.batch_size):
             dev_batch = self.feed_enc(words)
 	    te_loss = 5
-            encoder_useful_state = self.sess.run([self.encoder_encoded_concat_rep], dev_batch)
-        msg = "Autoencoding testing loss: {}%2f".format(te_loss)
+            encoder_useful_state = self.sess.run([self.encoder_concat_rep], dev_batch)
+        print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
+	print(len(encoder_useful_state[0][0]))
+	msg = "Autoencoding testing loss: {}%2f".format(te_loss)
         self.logger.info(msg)
         return te_loss
 
@@ -424,16 +426,24 @@ class NERModel(BaseModel):
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
             fd, _ = self.get_feed_dict(words, labels, self.config.lr,
                     self.config.dropout)
-
-            _, train_loss, summary = self.sess.run(
-                    [self.train_op, self.loss, self.merged], feed_dict=fd)
+	    _, train_loss, summary = self.sess.run([self.train_op, self.loss, self.merged], feed_dict = fd)
+            #enc_rep, _, train_loss, summary = self.sess.run(
+           #         [self.encoder_concat_rep,self.train_op, self.loss, self.merged], feed_dict=fd)
 
             prog.update(i + 1, [("train loss", train_loss)])
 
             # tensorboard
             if i % 10 == 0:
                 self.file_writer.add_summary(summary, epoch*nbatches + i)
-
+	
+	for words, labels in minibatches(dev, self.config.batch_size):
+            dev_batch = self.feed_enc(words)
+	    te_loss = 5
+            encoder_useful_state = self.sess.run([self.encoder_concat_rep], dev_batch)
+        
+	print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
+	print(len(encoder_useful_state[0][0]))
+	
         metrics = self.run_evaluate(dev)
         msg = " - ".join(["{} {:04.2f}".format(k, v)
                 for k, v in metrics.items()])
