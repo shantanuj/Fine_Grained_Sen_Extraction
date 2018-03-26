@@ -356,6 +356,9 @@ class NERModel(BaseModel):
 	    #print(dim1, type(dim1))
 	    #print(type(self.encoder_concat_rep))
             seq2seq_encoder_out = tf.reshape(self.encoder_concat_rep,[dim1, dim2, self.config.seq2seq_enc_hidden_size*4]) #Batch_size*Dims output
+
+	    #NOTE: seq2seq_encoder_out[0:]<-- corresponds to normal representation for all sentences. The 2nd dimension is the batch, the first dimension is seq_length+1
+	    #So we have to perform an operation on the first dimension first value(normal all words rep of sentence) with all other missing word reps. 
             self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
 	    self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
             self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)

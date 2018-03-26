@@ -9,6 +9,11 @@ Certain normalizeation functions (only to convert to lowercase during testing ar
 _
 4) Give model a name to save it later (restored for training)
 
+NOTE: Train seq2seq with train_seq2seq.py. Once the loss reaches an optimum value, train absa with train_absa.py. Since training is separate but shares the same model, iterative training (seq2seq then absa then more seq2seq) is possible. 
+
+REMEMBER TO change train_seq2seq in config.py to switch from seq2seq to absa training
+
+
 5) For new vocab either use config or manually update vocab pickle file. 
 
 6) Do not run make data

@@ -95,10 +95,12 @@ class Config():
     dropout          = 0.5
     dropout_seq2seq  = 0.8
     batch_size       = 25
-    seq2seq_batch_size = 25
+    seq2seq_batch_size = 50
     lr_method        = "adagrad"
-    lr               = 0.02
-    lr_decay         = 0.9
+    #lr               = 0.02
+    #lr_decay	     = 0.9
+    lr              = 0.025 #Seq2seq
+    lr_decay        = 0.99  #0.9 or 0.6 for absa 
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 8
 
@@ -106,6 +108,7 @@ class Config():
     hidden_size_char = 100 # lstm on chars
     hidden_size_lstm = 300 # lstm on word embeddings
     seq2seq_enc_hidden_size = 50
+    #seq2seq_enc_hidden_size = 200
     seq2seq_dec_hidden_size = seq2seq_enc_hidden_size*2
 		
 
@@ -115,7 +118,8 @@ class Config():
     use_seq2seq = True #Does model use seq2seq
 
    #NOTE
-    seq2seq_trained=  True#True #Has seq2seq been trained
+    seq2seq_trained = False
+    #seq2seq_trained=  True#False#True #Has seq2seq been trained
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     
@@ -129,7 +133,9 @@ class Config():
             s+='_seq2seq'
         return s
     #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
+    #domain = domain_train = "Laptop"
     domain = domain_train = "Rest"
+    #domain_test = "Laptop"
     domain_test = "Rest"
     embedding_name = "w2v"
     filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
@@ -139,6 +145,8 @@ class Config():
     model_already_exists = False#True#os.path.isdir(dir_output)
     
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars,use_seq2seq)
+    if(use_seq2seq):
+    	extra += '_'+str(seq2seq_enc_hidden_size)
     filename_dev = filename_test = "data/{}test_data.txt".format(domain_test)#"data/Resttest_data.txt"
     #filename_dev = filename_test =
     filename_train = "data/{}train_data.txt".format(domain_train)#"data/Resttrain_data.txt" # test

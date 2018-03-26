@@ -114,12 +114,16 @@ class BaseModel(object):
         best_score = 1e2
         nepoch_no_imprv = 0 # for early stopping
         self.add_summary() # tensorboard
+	config_lr_original_val = self.config.lr
         for epoch in range(self.config.nepochs):
             self.logger.info("Epoch {:} out of {:}".format(epoch + 1,
                         self.config.nepochs))
 
             score = self.run_epoch_seq2seq(train, dev, epoch)
             self.config.lr *= self.config.lr_decay
+
+	    if((epoch+1)%33==0 and self.config.train_seq2seq and self.config.use_seq2seq): #EMPIRICAL evidence
+		self.config.lr = config_lr_original_val
             #Early stopping
             if score <= best_score: #loss is being used, therefore lesser than is better
                 nepoch_no_imprv = 0
