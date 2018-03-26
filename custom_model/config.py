@@ -92,7 +92,7 @@ class Config():
     train_embeddings = False
     nepochs          = 100
     #NOTE:
-    dropout          = 0.5
+    dropout          = 0.7
     dropout_seq2seq  = 0.8
     batch_size       = 25
     seq2seq_batch_size = 50
@@ -155,10 +155,11 @@ class Config():
     dir_output = "results/{}_{}_{}/".format(domain_train, embedding_name, extra)
     
     if(not model_already_exists and os.path.exists(dir_output)):
-	x= int(input("Existing model found. Overwrite existing model or retrain existing model  (1/0)?"))
+	x= int(input("Existing model found. Create new model or train existing model  (1/0)?"))
 	if(not bool(x)):
 	    model_already_exists = True
- 
+        if(x not in [1,0]):
+	    x = int(input("1 to create or 0 to overwrite")) 
     dir_model  = dir_output + "model.weights/"
 
     path_log   = dir_output + "log.txt"

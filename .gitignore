@@ -4,3 +4,4 @@
 !/data/.gitkeep
 /results
 *.DS_Store
+/seq2seq/Rest_w2v_bilstm300_crf_seq2seq

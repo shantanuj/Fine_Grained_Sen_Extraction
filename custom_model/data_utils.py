@@ -56,8 +56,7 @@ class CoNLLDataset(object):
         self.processing_tag = processing_tag
         self.max_iter = max_iter
         self.length = None
-
-
+        
     def __iter__(self):
         niter = 0
         with open(self.filename) as f:
@@ -74,12 +73,30 @@ class CoNLLDataset(object):
                 else:
                     ls = line.split(' ')
                     word, tag = ls[0],ls[-1]
+  		   # punct_flag = False
                     if self.processing_word is not None:
+			#NOTE : The below line might lead to char embeds problem
+			#if(word[-1] in punctuation_dict.keys()):
+			    #print("HELLOS",word)
+		         #   punct_word = word[-1]
+			  #  word = word[:-1]
+			    #if(punct_word == '.'):
+			#	print(word+punct_word)
+			    
+			 #   punct_flag = True
+			    #print(word)
                         word = self.processing_word(word)
                     if self.processing_tag is not None:
                         tag = self.processing_tag(tag)
                     words += [word]
                     tags += [tag]
+		    
+		   # if(punct_flag):
+		#	if self.processing_word is not None:
+		#	    punct_word = self.processing_word(punct_word)
+			    #print(punct_word
+		#	words += [punct_word]
+		#	tags += [4]
 
 
     def __len__(self):
@@ -90,6 +107,8 @@ class CoNLLDataset(object):
                 self.length += 1
 
         return self.length
+
+#punctuation_dict = { ',':' <COMMA> ', ';': ' <SEMICOLON> ', '?': ' <QUESTION_MARK> ', '-': ' <HYPHEN> ',':':' < COLON> ','!': ' <EXCLAMATION_MARK> '}
 
 
 def get_vocabs(datasets):
@@ -262,7 +281,7 @@ def get_word_embeddings(filename):
 
 
 def get_processing_word(vocab_words=None, vocab_chars=None,
-                    lowercase=False, chars=False, allow_unk=True):
+                    lowercase=False, chars=False, allow_unk=True, replace_punct=True):
     """Return lambda function that transform a word (string) into list,
     or tuple of (list, id) of int corresponding to the ids of the word and
     its corresponding characters.
@@ -289,12 +308,21 @@ def get_processing_word(vocab_words=None, vocab_chars=None,
             word = word.lower()
         #if word.isdigit():
          #   word = NUM
-
+	#if(replace_punct):
+	 #   if(word in punctuation_dict.keys()):
+	#	word = punctuation_dict[word]
+		
         # 2. get id of word
         if vocab_words is not None:
             if word in vocab_words:
                 word = vocab_words[word]
-            else:
+            
+	    elif(word.upper() in vocab_words):
+		word = vocab_words[word.upper()] 
+	    elif(" "+word.upper()+" " in vocab_words):
+		word = vocab_words[" "+word.upper()+" "]
+	    else:
+		#print(word.upper())	
                 if allow_unk:
                     word = vocab_words[UNK]
                 else:
