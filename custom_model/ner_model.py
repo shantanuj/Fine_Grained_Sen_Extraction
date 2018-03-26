@@ -517,10 +517,10 @@ class NERModel(BaseModel):
         for words, labels in minibatches(dev, batch_size):
             dev_batch = self.feed_enc(words)
             te_loss = 5
-            word_embeds, predictions, encoder_useful_state = self.sess.run([self.word_embeddings,self.decoder_prediction, self.encoder_concat_rep], dev_batch)
+            predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
             #print("TE",len(words),len(words[0]),len(predictions), len(predictions[0]))
-        print("Word embedding shape", word_embeds.shape)
-        print("Word embeds for 0th sentence and 1st word",word_embeds[0][1])
+        #print("Word embedding shape", word_embeds.shape)
+        #print("Word embeds for 0th sentence and 1st word",word_embeds[0][1])
         words = np.transpose(np.array(words))
         predictions = np.transpose(np.array(predictions))
         print("ACTUAL,PREDICTED",words[2],predictions[2])
@@ -564,7 +564,7 @@ class NERModel(BaseModel):
             dev_batch = self.feed_enc(words)
             te_loss = 5
             word_embeds, encoder_useful_state = self.sess.run([self.word_embeddings,self.encoder_concat_rep], dev_batch)
-        #print("Word embedding shape", word_embeds.shape)
+        print("Word embedding shape", word_embeds.shape)
         print("Word embeds for 0th sentence and 1st word",word_embeds[0][1]) 
         #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
         #print(len(encoder_useful_state[0][0]))
@@ -825,10 +825,10 @@ class NERModel(BaseModel):
         if dropout is not None:
             feed[self.dropout] = dropout
         if (self.config.use_seq2seq):
-            feed[self.decoder_targets] = word_ids
+            
             if(not self.config.train_seq2seq):#Seq2seq has been trained-> Use for absa task
                 np_mask_matrix = np.ones((max_sentence_length, max_sentence_length))
-                
+                feed[self.decoder_targets] = encoder_inputs_
                 a = np.array(range(max_sentence_length))
                 np_mask_matrix[np.arange(len(a)),a] = 0
                 #NOTE: When for ABSA task we feed encoder, we feed as normal (the tf graph converts to time major format)
