@@ -54,6 +54,9 @@ class NERModel(BaseModel):
         self.lr = tf.placeholder(dtype=tf.float32, shape=[],
                         name="lr")
 
+	#Batch specific
+	self.max_sentence_length = tf.placeholder(dtype=tf.int32, shape=[], name="max_sentence_length")
+	self.mask_matrix = tf.placeholder(dtype=tf.bool, shape=[None,None], name="mask_matrix")
 	#self.pad_token = '<PAD>'
 	#self.eos_token = '<END>'
 	#self.PAD = self.config.vocab_words[self.pad_token]
@@ -76,11 +79,11 @@ class NERModel(BaseModel):
         # perform padding of the given data:
         if self.config.use_chars:
             char_ids, word_ids = zip(*words)
-            word_ids, sequence_lengths = pad_sequences(word_ids, 0)
-            char_ids, word_lengths = pad_sequences(char_ids, pad_tok=0,
+            word_ids, sequence_lengths,max_sentence_length = pad_sequences(word_ids, 0)
+            char_ids, word_lengths,_ = pad_sequences(char_ids, pad_tok=0,
                 nlevels=2)
         else:
-            word_ids, sequence_lengths = pad_sequences(words, 0)
+            word_ids, sequence_lengths,max_sentence_length = pad_sequences(words, 0)
 
         # build feed dictionary
         feed = {
@@ -103,7 +106,17 @@ class NERModel(BaseModel):
             feed[self.dropout] = dropout
         if (self.config.use_seq2seq):
             feed[self.decoder_targets] = word_ids
-        return feed, sequence_lengths
+	    if(not self.config.train_seq2seq):#Seq2seq has been trained-> Use for absa task
+	    	np_mask_matrix = np.ones((max_sentence_length, max_sentence_length))
+	   	a = np.array(max_sentence_length)
+		np_mask_matrix[np.arange(len(a)),a] = 0
+		
+	    else:
+		np_mask_matrix = np.ones((1,1))
+	    np_mask_matrix = np_mask_matrix.astype(bool)
+       	    feed[self.mask_matrix] =  np_mask_matrix
+	feed[self.max_sentence_length] = max_sentence_length
+	return feed, sequence_lengths
 
     
     
@@ -169,34 +182,37 @@ class NERModel(BaseModel):
         self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout)
 
     
-    def word_drop_pre_bridge(self, input_word_seq_tensor, sequence_lengths, max_seq_length=None):
+    def word_drop_pre_bridge(self, input_word_seq_tensor, seq_lengths, max_seq_length=None):
             #NOTE: There are no variables in the function, so shouldn't matter for the tf graph construction (hopefully)
-            """ This function is only used during ABSA task. It takes in the input word sequence tensor and sequence lengths, and outputs a modified batch  where for each sentence, a row exists with normal sentence, and corresponding n rows with 1 missing word. 
+        """ This function is only used during ABSA task. It takes in the input word sequence tensor and sequence lengths, and outputs a modified batch  where for each sentence, a row exists with normal sentence, and corresponding n rows with 1 missing word. 
         Same applies for the sequence lengths.
 
         In essence:
                 For word_ids: Input 2d (n_batch,max_sequence_length) --> Intermediate 3d (n_batch, max_sequence_length, max_sequence_length) --> Output 2d (n_batch*max_sequence_length, max_sequence_length) --> Output 2d time major (max_sequence_length,n_batch*max_sequence_length)
             For seq_lens: Input 1d (n_batch,) --> Intermediate 2d (n_batch, max_sequence_length,) --> Output 1d (n_batch*max_sequence_length)
-            """
-    if self.config.use_seq2seq:
+        """
+        if self.config.use_seq2seq:
             if(max_seq_length is None):
-                max_seq_length = input_word_seq_tensor.shape[-1]
+                max_seq_length = self.max_sentence_length
+		print(max_seq_length)
             #1) Create mask to select word indices ( 1 dropped every time)
-            np_mask_matrix = np.ones((max_seq_length, max_seq_length))
-            a = np.array(range(max_seq_length))
-            np_mask_matrix[np.arange(len(a)),a] = 0 #go through each row, and for that particular column set 0 (opposite of a diagonal matrix)
-            tf_mask_matrix = tf.convert_to_tensor(np_mask_matrix, dtype="bool")
+            #np_mask_matrix = np.ones((max_seq_length, max_seq_length))
+            #a = np.array(range(max_seq_length))
+            #np_mask_matrix[np.arange(len(a)),a] = 0 #go through each row, and for that particular column set 0 (opposite of a diagonal matrix)
+            #tf_mask_matrix = tf.convert_to_tensor(np_mask_matrix, dtype="bool")
+	    tf_mask_matrix = self.mask_matrix
             padding = tf.constant([[0,0],[0,1]],dtype="int32")
 
             #2nd operation add dimensions to both input tensors`
             resultant_tensor = tf.expand_dims(input_word_seq_tensor,0)
-            tensor_seq_lengths = tf.expand_dim(seq_lengths, 0)
+            tensor_seq_lengths = tf.expand_dims(seq_lengths, 0)
 
             #3rd operation--> Make tensor for seq_lengths for dropped indices (they're always 1 less)
-            seq_lengths_for_dropped = tf.expand_dims(seq_lengths - tf.ones(shape=seq_lengths.shape[0], dtype ="int32"),0)
+            seq_lengths_for_dropped = tf.expand_dims(seq_lengths - tf.ones(shape=(tf.shape(tf_mask_matrix)[0],1), dtype ="int32"),0)
+
 
             #4th operation --> looped Applying mask matrix to obtain dropped word ids; each result is appended to row of resultant_tensor
-            for drop_index in range(max_seq_length):
+            for drop_index in range(max_sequence_length):
                 f = lambda word_seq: tf.boolean_mask(word_seq, tf_mask_matrix[:,drop_index])
                 resultant_tensor = tf.concat([resultant_tensor, tf.expand_dims(tf.pad(tf.map_fn(f, input_word_seq_tensor), padding, "CONSTANT"),0)],0)
                 tensor_seq_lengths = tf.concat([tensor_seq_lengths, seq_lengths_for_dropped],0)
@@ -209,19 +225,13 @@ class NERModel(BaseModel):
             resultant_tensor = resultant_tensor.swapaxes(0,1) 
             return resultant_tensor, tensor_seq_lengths
 
-        def bridge_seq2seq_embeddings(self):
-	#This is to convert the seq2seq outputs of shape 2d Time*Batch --> Perform comparison of missing word with all words-->convert into 3d shape(Batch*Time*Embeds), and then concatenate as batch*Time*Embeds with word_embeddings
-            seq2seq_encoder_out = tf.reshape(self.encoder_concat_rep,[self.word_ids.shape[-1]+1, self.word_ids.shape[0], self.config.seq2seq_enc_hidden_size*4]) #Batch_size*Dims output
-            self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, perm=[1,0,2]) #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
-	#assert self.seq2seq_encoder_embeds.shape[0] == self.word_embeddings.shape[0]
-            self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
-				
+    			
     def convert_tensors(self):
 	#NOTE Word ids during training of seq2seq are of different format(time*batch) whereas in absa task they are fed normal as batch*time) 
 	if(self.config.train_seq2seq):
 	    self.seq2seq_input_sequences, self.seq2seq_input_sequence_lengths =  self.word_ids, self.sequence_lengths
         else:
-	    self.seq2seq_input_sequnces, self.seq2seq_input_sequence_lengths = self.bridge_process(self.word_ids, self.sequence_lengths)
+	    self.seq2seq_input_sequnces, self.seq2seq_input_sequence_lengths = self.word_drop_pre_bridge(self.word_ids, self.sequence_lengths)
 
     def add_seq2seq(self):
 	"""This stores the seq2seq model which will be imported as part of the training graph since other options of creating a separate training graph/session and importing seemed lengthy. 
@@ -245,7 +255,8 @@ class NERModel(BaseModel):
                 self.encoder_final_state = LSTMStateTuple(c= encoder_final_state_c, h=encoder_final_state_h)
 
                 self.encoder_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)
-                #NOTE: Very important to stop gradient flow once trained
+                print(type(self.encoder_concat_rep))
+		 #NOTE: Need to stop gradient flow once trained
                 if(self.config.seq2seq_trained):
                     self.encoder_concat_rep = tf.stop_gradient(self.encoder_concat_rep) 
     
@@ -312,6 +323,20 @@ class NERModel(BaseModel):
          #       stepwise_cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels = tf.one_hot(decoder_targets, depth = self.config.nwords, dtype = tf.float32), logits = self.decoder_logits,)
           #      self.seq2seq_loss = tf.reduce_mean(stepwise_cross_entropy)
             
+ 
+    def bridge_seq2seq_embeddings(self):
+	#This is to convert the seq2seq outputs of shape 2d Time*Batch --> Perform comparison of missing word with all words-->convert into 3d shape(Batch*Time*Embeds), and then concatenate as batch*Time*Embeds with word_embeddings
+        if self.config.use_seq2seq:
+	    #print(self.word
+	    dim1 = tf.shape(self.word_ids)[-1]+1
+	    dim2 = tf.shape(self.word_ids)[0]
+	    #print(dim1, type(dim1))
+	    #print(type(self.encoder_concat_rep))
+            seq2seq_encoder_out = tf.reshape(self.encoder_concat_rep,[dim1, dim2, self.config.seq2seq_enc_hidden_size*4]) #Batch_size*Dims output
+            self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
+	    self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
+            self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
+	
     def add_logits_op(self):
         """Defines self.logits
 
@@ -390,13 +415,11 @@ class NERModel(BaseModel):
             self.add_logits_op()
             self.add_pred_op()
             self.add_loss_op()
-        else:
-
-           
+        else: 
 	    self.convert_tensors()
+	    self.add_logits_op()
             self.add_seq2seq()
             self.bridge_seq2seq_embeddings()
-	    self.add_logits_op()
 	    self.add_pred_op()
             self.add_loss_op()		
         

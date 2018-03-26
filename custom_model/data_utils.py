@@ -342,7 +342,7 @@ def pad_sequences(sequences, pad_tok, nlevels=1):
 
     """
     if nlevels == 1:
-        max_length = max(map(lambda x : len(x), sequences))
+        max_length_sentence = max_length = max(map(lambda x : len(x), sequences))
         sequence_padded, sequence_length = _pad_sequences(sequences,
                                             pad_tok, max_length)
 
@@ -362,7 +362,7 @@ def pad_sequences(sequences, pad_tok, nlevels=1):
         sequence_length, _ = _pad_sequences(sequence_length, 0,
                 max_length_sentence)
 
-    return sequence_padded, sequence_length
+    return sequence_padded, sequence_length, max_length_sentence
 
 
 def minibatches(data, minibatch_size):
