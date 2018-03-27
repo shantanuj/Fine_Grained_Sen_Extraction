@@ -6,10 +6,20 @@ EXPERIMENTS:
 
 2) seq2seq+ bilstm crf
     a) Rest
-	Seq2seq trained for TR Rest only. Epochs ~ 100 with lr of 0.25 with 0.99 cut: Tr loss  Te loss _ ~ 1/2 hr
+	a) Seq2seq (50d) trained for TR Rest only. Epochs ~ 200 with lr of 0.25 then 0.025 with 0.99 cut: Tr loss  at 0.9927 Te loss 3.4 ~ 1/2 hr
+          ABSA accuracy: 
+	  
+        b) Continued training of testing set and retrain absa model for couple epochs. Overall seq2seq loss: ____ ; 
+  
+          ABSA accuracy: 
 	
-	Seq2seq includes TE training for couple epochs. Before classification (frozen)
+	
 
+
+
+
+
+	Now for 100d 
 
     b) Laptop
 

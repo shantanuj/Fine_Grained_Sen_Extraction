@@ -90,24 +90,24 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs          = 800
+    nepochs          = 100
     #NOTE:
     dropout          = 0.7
     dropout_seq2seq  = 0.6
     batch_size       = 25
     seq2seq_batch_size = 50
     lr_method        = "adagrad"
-    #lr               = 0.02
-   # lr_decay	     = 0.9
-    lr              = 0.25 #Seq2seq
-    lr_decay        = 0.99  #0.9 or 0.6 for absa 
+    lr               = 0.02
+    lr_decay	     = 0.9
+    #lr              = 0.15 #Seq2seq
+    #lr_decay        = 0.99  #0.9 or 0.6 for absa 
     clip             = -1 # if negative, no clipping
-    nepoch_no_imprv  = 16
+    nepoch_no_imprv  = 20
 
     # model hyperparameters
     hidden_size_char = 100 # lstm on chars
     hidden_size_lstm = 300 # lstm on word embeddings
-    seq2seq_enc_hidden_size = 50
+    seq2seq_enc_hidden_size = 50#100 #50
     #seq2seq_enc_hidden_size = 200
     seq2seq_dec_hidden_size = seq2seq_enc_hidden_size*2
 		
@@ -118,8 +118,8 @@ class Config():
     use_seq2seq = True #Does model use seq2seq
     #use_only_seq2seq = True
    #NOTE
-    #seq2seq_trained = False
-    seq2seq_trained=  False#True #Has seq2seq been trained
+    #seq2seq_trained = True
+    seq2seq_trained=  False #Has seq2seq been trained
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     
@@ -135,8 +135,8 @@ class Config():
     #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
     #domain = domain_train = "Laptop"
     domain = domain_train = "Rest"
-    #domain_test = "Laptop"
-    domain_test = "Rest"
+    domain_test = "Laptop"
+    #domain_test = "Rest"
     embedding_name = "w2v"
     filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
  

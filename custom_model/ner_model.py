@@ -267,10 +267,12 @@ class NERModel(BaseModel):
 #NOTE: 1) There might be a more efficient manner to load and train the seq2seq separately, and then just use the final weights. 
 #      2) Blocking gradients should not impact elements linked to this
         if(self.config.use_seq2seq):
-            with tf.variable_scope('seq2seq_encoder'):
+	    
+            with tf.variable_scope('seq2seq_encoder',reuse=tf.AUTO_REUSE):
                 self.seq2seq_input_sequences_embeds = tf.nn.embedding_lookup(self._word_embeddings, self.seq2seq_input_sequences, name="word_embeddings")
 
                 encoder_cell = LSTMCell(self.config.seq2seq_enc_hidden_size)
+
                 ((encoder_fw_outputs, encoder_bw_outputs), (encoder_fw_final_state, encoder_bw_final_state)) = (tf.nn.bidirectional_dynamic_rnn(cell_fw=encoder_cell, cell_bw=encoder_cell, inputs = self.seq2seq_input_sequences_embeds, sequence_length = self.seq2seq_input_sequence_lengths, dtype = tf.float32, time_major=True))
                #encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs),2)
                 encoder_final_state_c = tf.concat((encoder_fw_final_state.c, encoder_bw_final_state.c),1)
@@ -285,11 +287,12 @@ class NERModel(BaseModel):
                     self.encoder_concat_rep = tf.stop_gradient(self.encoder_concat_rep) 
     
         
-            with tf.variable_scope('seq2seq_decoder'):
+            with tf.variable_scope('seq2seq_decoder',reuse=tf.AUTO_REUSE):
                 encoder_max_time, batch_size = tf.unstack(tf.shape(self.seq2seq_input_sequences))
          	#self.encoder_max = encoder_max_time
 		#self.batch_max = batch_size 
                 decoder_cell = LSTMCell(self.config.seq2seq_dec_hidden_size)
+
                 decoder_lengths = self.sequence_lengths + 3 #2 additional terms
                 W_dec = tf.Variable(tf.random_uniform([self.config.seq2seq_dec_hidden_size, self.config.nwords],-1,1), dtype = tf.float32)
                 b_dec = tf.Variable(tf.zeros([self.config.nwords]), dtype = tf.float32)
@@ -352,7 +355,7 @@ class NERModel(BaseModel):
 	#This is to convert the seq2seq outputs of shape 2d Time*Batch --> Perform comparison of missing word with all words-->convert into 3d shape(Batch*Time*Embeds), and then concatenate as batch*Time*Embeds with word_embeddings
         if self.config.use_seq2seq:
 	    #print(self.word
-	    dim1 = tf.shape(self.word_ids)[-1]+1
+	    dim1 = tf.shape(self.word_ids)[-1]+1 #Extra since normal rep + n missing reps
 	    dim2 = tf.shape(self.word_ids)[0]
 	    #print(dim1, type(dim1))
 	    #print(type(self.encoder_concat_rep))
@@ -362,8 +365,12 @@ class NERModel(BaseModel):
 	    #So we have to perform an operation on the first dimension first value(normal all words rep of sentence) with all other missing word reps. 
             self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
 	    self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
-            
-	    self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
+            if(self.config.train_seq2seq):
+		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)
+		self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
+	    else:
+		self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
+		  	    
 	    
     def add_logits_op(self):
         """Defines self.logits
@@ -378,7 +385,8 @@ class NERModel(BaseModel):
                     cell_fw, cell_bw, self.word_embeddings,
                     sequence_length=self.sequence_lengths, dtype=tf.float32)
             output = tf.concat([output_fw, output_bw], axis=-1)
-            output = tf.nn.dropout(output, self.dropout)
+            self.lstm_out_shape = tf.shape(self.word_embeddings)
+	    output = tf.nn.dropout(output, self.dropout)
 
         with tf.variable_scope("proj"):
             W = tf.get_variable("W", dtype=tf.float32,
@@ -391,7 +399,8 @@ class NERModel(BaseModel):
             output = tf.reshape(output, [-1, 2*self.config.hidden_size_lstm])
             pred = tf.matmul(output, W) + b
             self.logits = tf.reshape(pred, [-1, nsteps, self.config.ntags])
-
+	    #if(self.config.train_seq2seq and self.config.use_seq2seq):
+	#	self.logits = tf.stop_gradient(self.logits)
 
     def add_pred_op(self):
         """Defines self.labels_pred
@@ -445,19 +454,23 @@ class NERModel(BaseModel):
             self.add_loss_op()
         else: 
 	    self.convert_tensors()
-	    self.add_logits_op()
+	    
             self.add_seq2seq()
             self.bridge_seq2seq_embeddings()
+	    self.add_logits_op()
 	    self.add_pred_op()
             self.add_loss_op()		
-        
-        if(self.config.use_seq2seq):#This is also a node in the graph and hence needs to be stored
+       
+        #self.add_train_op(self.config.lr_method, self.lr, self.loss, self.config.clip)
+        if(self.config.use_seq2seq): #and self.config.train_seq2seq):#This is also a node in the graph and hence needs to be stored
         # Generic functions that add training op and initialize session
-            self.add_train_op(self.config.lr_method, self.lr, self.seq2seq_loss,
-                self.config.clip, True)
+	    # self.add_train_op(self.config.lr_method, self.lr, self.loss, self.config.clip)
+	     self.add_train_op(self.config.lr_method, self.lr, self.seq2seq_loss, self.config.clip, True)
+        #else:
+	 #    self.add_train_op(self.config.lr_method, self.lr, self.seq2seq_loss, self.config.clip, True)
+ 	  #   self.add_train_op(self.config.lr_method, self.lr, self.loss, self.config.clip) 
         
-        self.add_train_op(self.config.lr_method, self.lr, self.loss,
-                self.config.clip)
+        self.add_train_op(self.config.lr_method, self.lr, self.loss, self.config.clip)
         self.initialize_session() # now self.sess is defined and vars are init
 
 
@@ -510,7 +523,7 @@ class NERModel(BaseModel):
           
           #  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_concat_rep], feed_dict =df)
             _, train_loss, summary = self.sess.run([self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
-            
+            #print("lstm out",lstm_out_shape)
 	   #print("ENC_TIME",enc_time)
            # print("BATCH_SIZE",b_size) 
             #print(cross_entropy)
@@ -523,7 +536,8 @@ class NERModel(BaseModel):
             dev_batch = self.feed_enc(words)
             #te_loss = 5
             #predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
-	    te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    #te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    _,te_loss, predictions = self.sess.run([self.seq2seq_train_op,self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
 	    #te_loss = self.compute_seq2seq_acc(words, predictions)
 	    #prog.update(i + 1, [("test loss", te_acc)])
             #print("TE",len(words),len(words[0]),len(predictions), len(predictions[0]))
@@ -531,11 +545,13 @@ class NERModel(BaseModel):
         #print("Word embeds for 0th sentence and 1st word",word_embeds[0][1])
         words = np.transpose(np.array(words))
         predictions = np.transpose(predictions)
+	
         print("ACTUAL,PREDICTED", words[1], predictions[1])
 	#print("AC, PR", words[2],predictions[2])
         #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
         msg = "Autoencoding testing loss: {}".format(te_loss)
-        self.logger.info(msg)
+        #te_loss = 5
+	self.logger.info(msg)
         return te_loss
 
     def run_epoch(self, train, dev, epoch):
@@ -559,7 +575,7 @@ class NERModel(BaseModel):
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
             fd, _ = self.get_feed_dict(words, labels, self.config.lr,
                     self.config.dropout)
-	    _, train_loss, summary = self.sess.run([self.train_op, self.loss, self.merged], feed_dict = fd)
+	    output_shape,_, train_loss, summary = self.sess.run([self.lstm_out_shape, self.train_op, self.loss, self.merged], feed_dict = fd)
             #enc_rep, _, train_loss, summary = self.sess.run(
            #         [self.encoder_concat_rep,self.train_op, self.loss, self.merged], feed_dict=fd)
 
@@ -568,13 +584,13 @@ class NERModel(BaseModel):
             # tensorboard
             if i % 10 == 0:
                 self.file_writer.add_summary(summary, epoch*nbatches + i)
-	
+	print("LSTM in shape", output_shape)
         for words, labels in minibatches(dev, self.config.batch_size):
             dev_batch = self.feed_enc(words)
             te_loss = 5
             word_embeds, encoder_useful_state = self.sess.run([self.word_embeddings,self.encoder_concat_rep], dev_batch)
         print("Word embedding shape", word_embeds.shape)
-        print("Word embeds for 0th sentence and 1st word",word_embeds[0][1]) 
+        #print("Word embeds for 0th sentence and 1st word",word_embeds[0][1]) 
         #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
         #print(len(encoder_useful_state[0][0]))
 	
