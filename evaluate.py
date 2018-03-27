@@ -1,6 +1,6 @@
-from model.data_utils import CoNLLDataset
-from model.ner_model import NERModel
-from model.config import Config
+from custom_model.data_utils import CoNLLDataset
+from custom_model.ner_model import NERModel
+from custom_model.config import Config
 
 
 def align_data(data):

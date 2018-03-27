@@ -369,6 +369,7 @@ class NERModel(BaseModel):
 		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)
 		self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
 	    else:
+		#self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
 		self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
 		  	    
 	    
@@ -438,7 +439,7 @@ class NERModel(BaseModel):
             self.seq2seq_loss = tf.reduce_mean(self.stepwise_cross_entropy)
         
         # for tensorboard
-        if(self.config.train_seq2seq):
+        if(self.config.train_seq2seq and self.config.use_seq2seq):
             tf.summary.scalar("seq2seq_loss",self.seq2seq_loss)
         else:
             tf.summary.scalar("loss", self.loss)
@@ -537,7 +538,10 @@ class NERModel(BaseModel):
             #te_loss = 5
             #predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
 	    #te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
-	    _,te_loss, predictions = self.sess.run([self.seq2seq_train_op,self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    if(self.config.complete_autoencode_including_test):
+	        _,te_loss, predictions = self.sess.run([self.seq2seq_train_op,self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    else:
+		te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
 	    #te_loss = self.compute_seq2seq_acc(words, predictions)
 	    #prog.update(i + 1, [("test loss", te_acc)])
             #print("TE",len(words),len(words[0]),len(predictions), len(predictions[0]))
@@ -585,11 +589,12 @@ class NERModel(BaseModel):
             if i % 10 == 0:
                 self.file_writer.add_summary(summary, epoch*nbatches + i)
 	print("LSTM in shape", output_shape)
-        for words, labels in minibatches(dev, self.config.batch_size):
-            dev_batch = self.feed_enc(words)
-            te_loss = 5
-            word_embeds, encoder_useful_state = self.sess.run([self.word_embeddings,self.encoder_concat_rep], dev_batch)
-        print("Word embedding shape", word_embeds.shape)
+        if(self.config.use_seq2seq):
+            for words, labels in minibatches(dev, self.config.batch_size):
+                dev_batch = self.feed_enc(words)
+           	te_loss = 5
+            	word_embeds, encoder_useful_state = self.sess.run([self.word_embeddings,self.encoder_concat_rep], dev_batch)
+        	print("Word embedding shape", word_embeds.shape)
         #print("Word embeds for 0th sentence and 1st word",word_embeds[0][1]) 
         #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
         #print(len(encoder_useful_state[0][0]))
