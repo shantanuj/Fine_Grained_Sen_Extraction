@@ -90,19 +90,19 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs          = 100
+    nepochs          = 800
     #NOTE:
     dropout          = 0.7
-    dropout_seq2seq  = 0.8
+    dropout_seq2seq  = 0.6
     batch_size       = 25
     seq2seq_batch_size = 50
     lr_method        = "adagrad"
     #lr               = 0.02
-    #lr_decay	     = 0.9
-    lr              = 0.025 #Seq2seq
+   # lr_decay	     = 0.9
+    lr              = 0.25 #Seq2seq
     lr_decay        = 0.99  #0.9 or 0.6 for absa 
     clip             = -1 # if negative, no clipping
-    nepoch_no_imprv  = 8
+    nepoch_no_imprv  = 16
 
     # model hyperparameters
     hidden_size_char = 100 # lstm on chars
@@ -116,10 +116,10 @@ class Config():
     use_crf = True # if crf, training is 1.7x slower on CPU
     use_chars = False # if char embedding, training is 3.5x slower on CPU
     use_seq2seq = True #Does model use seq2seq
-
+    #use_only_seq2seq = True
    #NOTE
-    seq2seq_trained = False
-    #seq2seq_trained=  True#False#True #Has seq2seq been trained
+    #seq2seq_trained = False
+    seq2seq_trained=  False#True #Has seq2seq been trained
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     

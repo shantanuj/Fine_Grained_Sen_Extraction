@@ -188,7 +188,8 @@ class NERModel(BaseModel):
                 word_embeddings = tf.concat([word_embeddings, output], axis=-1)
 
         self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout)
-
+	#if(self.config.use_only_seq2seq):
+	    #self.word_embeddings = tf.zeros([self.config.nwords, tf.shape(self.word_embeddings)[1],self.config.dim_word])
     
     def word_drop_pre_bridge(self, input_word_seq_tensor, seq_lengths, max_seq_length=None):
             #NOTE: There are no variables in the function, so shouldn't matter for the tf graph construction (hopefully)
@@ -361,8 +362,9 @@ class NERModel(BaseModel):
 	    #So we have to perform an operation on the first dimension first value(normal all words rep of sentence) with all other missing word reps. 
             self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
 	    self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
-            self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
-	
+            
+	    self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
+	    
     def add_logits_op(self):
         """Defines self.logits
 
@@ -519,16 +521,20 @@ class NERModel(BaseModel):
 	     #   print("ACTUAL,PREDICTED",words[0],predictions[0])	
         for words, labels in minibatches(dev, batch_size):
             dev_batch = self.feed_enc(words)
-            te_loss = 5
-            predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
+            #te_loss = 5
+            #predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
+	    te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    #te_loss = self.compute_seq2seq_acc(words, predictions)
+	    #prog.update(i + 1, [("test loss", te_acc)])
             #print("TE",len(words),len(words[0]),len(predictions), len(predictions[0]))
         #print("Word embedding shape", word_embeds.shape)
         #print("Word embeds for 0th sentence and 1st word",word_embeds[0][1])
         words = np.transpose(np.array(words))
-        predictions = np.transpose(np.array(predictions))
-        print("ACTUAL,PREDICTED",words[2],predictions[2])
+        predictions = np.transpose(predictions)
+        print("ACTUAL,PREDICTED", words[1], predictions[1])
+	#print("AC, PR", words[2],predictions[2])
         #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
-        msg = "Autoencoding testing loss: {}%2f".format(te_loss)
+        msg = "Autoencoding testing loss: {}".format(te_loss)
         self.logger.info(msg)
         return te_loss
 
@@ -839,7 +845,8 @@ class NERModel(BaseModel):
                 
             else:
                 np_mask_matrix = np.ones((1,1))
-            np_mask_matrix = np_mask_matrix.astype(bool)
+            
+	    np_mask_matrix = np_mask_matrix.astype(bool)
                 
             feed[self.ones] = np.ones(shape=(batch_size), dtype="int32")
             feed[self.mask_matrix] =  np_mask_matrix
@@ -853,16 +860,19 @@ class NERModel(BaseModel):
         #print(encoder_inputs_.shape)
         max_sentence_length = encoder_inputs_.shape[0]
         batch_size = encoder_inputs_.shape[-1]
-        feed = {
+        decoder_targets_, _ = self.batch_modify(
+            [(sequence) + [self.config.EOS] + [self.config.PAD] * 2 for sequence in enc_batch] #additional 3 spaces
+        )
+	feed = {
             self.word_ids: encoder_inputs_, 
             self.sequence_lengths: encoder_input_lengths_,
-            self.decoder_targets: encoder_inputs_}
+            self.decoder_targets: decoder_targets_,}
         
         if self.config.use_chars:
             feed[self.char_ids] = char_ids
             feed[self.word_lengths] = word_lengths
         
-        feed[self.labels] = encoder_inputs_
+        feed[self.labels] = decoder_targets_
         if labels is not None:
             labels, _ = pad_sequences(labels, self.config.vocab_tags['O'])
             feed[self.labels] = labels
@@ -874,7 +884,7 @@ class NERModel(BaseModel):
             feed[self.dropout] = dropout
             
         if (self.config.use_seq2seq):
-            feed[self.decoder_targets] = encoder_inputs_
+            #feed[self.decoder_targets] = encoder_inputs_
             if(not self.config.train_seq2seq):#Seq2seq has been trained-> Use for absa task
                 np_mask_matrix = np.ones((max_sentence_length, max_sentence_length))
                 
@@ -885,7 +895,8 @@ class NERModel(BaseModel):
                 
             else:
                 np_mask_matrix = np.ones((1,1))
-            np_mask_matrix = np_mask_matrix.astype(bool)
+            
+	    np_mask_matrix = np_mask_matrix.astype(bool)
                 #shape=(len(words))
             feed[self.ones] = np.ones(shape=(batch_size), dtype="int32")
             feed[self.mask_matrix] =  np_mask_matrix
@@ -896,4 +907,6 @@ class NERModel(BaseModel):
                      
    
                              
-   
+    def compute_seq2seq_acc(self, words, predictions):
+	#accuracy = 
+	return 5

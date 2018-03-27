@@ -1,0 +1,32 @@
+EXPERIMENTS:
+
+1) seq2seq only
+
+
+
+2) seq2seq+ bilstm crf
+    a) Rest
+	Seq2seq trained for TR Rest only. Epochs ~ 100 with lr of 0.25 with 0.99 cut: Tr loss  Te loss _ ~ 1/2 hr
+	
+	Seq2seq includes TE training for couple epochs. Before classification (frozen)
+
+
+    b) Laptop
+
+
+    c) Transfer: How to: Given a model trained for Ds, retrain seq2seq for that model with Dt, and tree kernel is passed as input.
+
+
+3) seq2seq + tree embeds only
+
+
+4) seq2seq + tree embeds + geo embeds
+
+
+5)  Bilstm crf only
+
+    a) Laptop
+
+
+
+    b) Rest
