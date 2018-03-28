@@ -363,22 +363,28 @@ class NERModel(BaseModel):
 
 	    #NOTE: seq2seq_encoder_out[0:]<-- corresponds to normal representation for all sentences. The 2nd dimension is the batch, the first dimension is seq_length+1
 	    #So we have to perform an operation on the first dimension first value(normal all words rep of sentence) with all other missing word reps. 
-            self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
-	  
+            
+	    self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
             self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
  
 	    if(self.config.use_cosine_sim):
 	    	normalized_seq2seq_enc = tf.nn.l2_normalize(seq2seq_encoder_out, dim=2)
 	    	self.seq2seq_encoder_cosine_similarities = tf.reduce_sum(tf.multiply(normalized_seq2seq_enc, normalized_seq2seq_enc[0,:,])[1:], 2, keep_dims=True)
-	    	self.seq2seq_encoder_cosine_similarities = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])	 
-		self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_embeds, self.seq2seq_encoder_cosine_similarities], axis=-1)   
+	    	self.seq2seq_encoder_cosine_similarities = tf.transpose(self.seq2seq_encoder_cosine_similarities, perm =[1,0,2])
+		if(self.config.use_only_cosine_sim):
+		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_cosine_similarities,tf.zeros([dim2,dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis=-1)	 
+		else:
+		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_embeds, self.seq2seq_encoder_cosine_similarities], axis=-1)   
 	    
             if(self.config.train_seq2seq):
 		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)
 		self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
 	    else:
 		#self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
-		self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
+		if(self.config.use_only_seq2seq):
+		    self.word_embeddings = tf.concat([tf.zeros([dim2,dim1-1,self.config.dim_word]),self.seq2seq_encoder_embeds],axis=-1)
+		else:
+		    self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
 		  	    
 	    
     def add_logits_op(self):
@@ -525,7 +531,7 @@ class NERModel(BaseModel):
         nbatches = (len(train) + batch_size - 1) // batch_size
         prog = Progbar(target=nbatches)
         #train_op = tf.train.AdamOptimizer(learning_rate= self.config.lr).minimize(self.seq2seq_loss)
-        
+        tr_ep_loss = 0.0
         #train_batch_generator = self.gen_batch_seq2seq(train,batch_size)
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
             #print("TR",len(words),len(words[0]), len(labels), len(labels[0]))
@@ -542,6 +548,7 @@ class NERModel(BaseModel):
             #print(decoder_logits[0])
             #print(encoder_useful_state[0])
     	    prog.update(i + 1, [("train loss", train_loss)])
+	    tr_ep_loss+=train_loss
        	    #if(i%70)
 	     #   print("ACTUAL,PREDICTED",words[0],predictions[0])	
         for words, labels in minibatches(dev, batch_size):
@@ -567,10 +574,14 @@ class NERModel(BaseModel):
 	#print("AC, PR", words[2],predictions[2])
         #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
         msg = "Autoencoding testing loss: {}".format(te_loss)
+	if(self.config.complete_autoencode_including_test):
+	    model_comparison_val =  tr_ep_loss
+	else:
+	    model_comparison_val = te_loss
         #te_loss = 5
 	self.logger.info(msg)
-	print("Cumulative loss: {}".format(float(train_loss)+float(te_loss)))
-        return 5
+	#print("Cumulative loss: {}".format(float(train_loss)+float(te_loss)))
+        return model_comparison_val
 
     def run_epoch(self, train, dev, epoch):
         """Performs one complete pass over the train set and evaluate on dev
@@ -593,7 +604,7 @@ class NERModel(BaseModel):
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
             fd, _ = self.get_feed_dict(words, labels, self.config.lr,
                     self.config.dropout)
-	    output_shape,_, train_loss, summary = self.sess.run([self.lstm_out_shape, self.train_op, self.loss, self.merged], feed_dict = fd)
+	    _, train_loss, summary = self.sess.run([self.train_op, self.loss, self.merged], feed_dict = fd)
             #enc_rep, _, train_loss, summary = self.sess.run(
            #         [self.encoder_concat_rep,self.train_op, self.loss, self.merged], feed_dict=fd)
 
@@ -602,13 +613,13 @@ class NERModel(BaseModel):
             # tensorboard
             if i % 10 == 0:
                 self.file_writer.add_summary(summary, epoch*nbatches + i)
-	print("LSTM in shape", output_shape)
+	
         if(self.config.use_seq2seq):
             for words, labels in minibatches(dev, self.config.batch_size):
                 dev_batch = self.feed_enc(words)
            	te_loss = 5
             	word_embeds, encoder_useful_state = self.sess.run([self.word_embeddings,self.encoder_concat_rep], dev_batch)
-            print("Word embedding shape", word_embeds.shape)
+            #print("Word embedding shape", word_embeds.shape)
         #print("Word embeds for 0th sentence and 1st word",word_embeds[0][1]) 
         #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
         #print(len(encoder_useful_state[0][0]))
