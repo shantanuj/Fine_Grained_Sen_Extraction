@@ -111,7 +111,11 @@ class BaseModel(object):
                 self.sess.graph)
 
     def train_seq2seq(self, train, dev):
-        best_score = 1e2
+        if self.config.model_already_exists:
+	    with open(self.config.dir_output+"seq2seq_min",'r') as f1:
+		best_score = float(f1.read())	    
+	else:
+	    best_score = 1e2 
         nepoch_no_imprv = 0 # for early stopping
         self.add_summary() # tensorboard
 	config_lr_original_val = self.config.lr
@@ -127,6 +131,8 @@ class BaseModel(object):
             #Early stopping
             if score <= best_score: #loss is being used, therefore lesser than is better
                 nepoch_no_imprv = 0
+		with open(self.config.dir_output+"seq2seq_min",'w') as f1:
+		    f1.write(str(score))
                 self.save_session()
                 best_score = score
                 self.logger.info("- new best score!")

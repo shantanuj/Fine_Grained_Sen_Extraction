@@ -76,10 +76,6 @@ class Config():
     use_pretrained = True
 
     # dataset
-    # filename_dev = "data/coNLL/eng/eng.testa.iob"
-    # filename_test = "data/coNLL/eng/eng.testb.iob"
-    # filename_train = "data/coNLL/eng/eng.train.iob"
-
     #>>>>>>>>>>>>>>>>>>Training and testing files<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     max_iter = None # if not None, max number of examples in Dataset
 
@@ -96,12 +92,12 @@ class Config():
     dropout          = 0.7
     dropout_seq2seq  = 1
     batch_size       = 25
-    seq2seq_batch_size = 80
+    seq2seq_batch_size = 50
     lr_method        = "adagrad"
-    lr               = 0.3
-    lr_decay	     = 0.99
-    #lr              = 0.07 #Seq2seq
-    #lr_decay        = 0.99  #0.9 or 0.6 for absa 
+    #lr               = 0.3
+    #lr_decay	     = 0.99
+    lr              = 0.17 #Seq2seq
+    lr_decay        = 0.99  #0.9 or 0.6 for absa 
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 100
 
@@ -116,18 +112,20 @@ class Config():
     # NOTE: if both chars and crf, only 1.6x slower on GPU
     use_crf = True # if crf, training is 1.7x slower on CPU
     use_chars = False # if char embedding, training is 3.5x slower on CPU
-    use_seq2seq = True #Does model use seq2seq
-    use_cosine_sim = True 
-    use_only_cosine_sim = True
-    use_only_seq2seq = False
-    use_GRU = False
-    use_only_h = False#True
+    use_seq2seq = True #False #Does model use seq2seq
+    
+    #Seq2seq stuff
+    use_cosine_sim = True and use_seq2seq 
+    use_only_cosine_sim = False and use_seq2seq
+    use_only_seq2seq = False and use_seq2seq
+    use_GRU = False and use_seq2seq
+    use_only_h = False and use_seq2seq #True
     #use_only_seq2seq = True
    #NOTE
     #seq2seq_trained = True#True
-    seq2seq_trained=  True #Has seq2seq been trained
+    seq2seq_trained=  False and use_seq2seq#Has seq2seq been trained
     #complete_autoencode_including_test = False
-    complete_autoencode_including_test = True #We only do this once testing data is available
+    complete_autoencode_including_test = True and use_seq2seq #We only do this once testing data is available
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     
@@ -161,9 +159,12 @@ class Config():
     #filename_dev = filename_test =
     filename_train = "data/{}train_data.txt".format(domain_train)#"data/Resttrain_data.txt" # test
 
-
-    dir_output = "results/tr{}_te{}_{}_{}/".format(domain_train, domain_test, embedding_name, extra)
-    
+    if(use_seq2seq):
+        dir_output = "results/tr{}_te{}_{}_{}/".format(domain_train, domain_test, embedding_name, extra)
+    else:
+	dir_output = "results/tr{}_te{}_{}_{}/".format(domain_train, domain_train, embedding_name, extra)
+ 
+	
     if(not model_already_exists and os.path.exists(dir_output)):
 	x= int(input("Existing model found. Create new model or train existing model  (1/0)?"))
 	if(not bool(x)):
