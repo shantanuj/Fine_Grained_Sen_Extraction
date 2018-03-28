@@ -364,7 +364,15 @@ class NERModel(BaseModel):
 	    #NOTE: seq2seq_encoder_out[0:]<-- corresponds to normal representation for all sentences. The 2nd dimension is the batch, the first dimension is seq_length+1
 	    #So we have to perform an operation on the first dimension first value(normal all words rep of sentence) with all other missing word reps. 
             self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
-	    self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
+	  
+            self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
+ 
+	    if(self.config.use_cosine_sim):
+	    	normalized_seq2seq_enc = tf.nn.l2_normalize(seq2seq_encoder_out, dim=2)
+	    	self.seq2seq_encoder_cosine_similarities = tf.reduce_sum(tf.multiply(normalized_seq2seq_enc, normalized_seq2seq_enc[0,:,])[1:], 2, keep_dims=True)
+	    	self.seq2seq_encoder_cosine_similarities = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])	 
+		self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_embeds, self.seq2seq_encoder_cosine_similarities], axis=-1)   
+	    
             if(self.config.train_seq2seq):
 		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)
 		self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
@@ -517,12 +525,15 @@ class NERModel(BaseModel):
         nbatches = (len(train) + batch_size - 1) // batch_size
         prog = Progbar(target=nbatches)
         #train_op = tf.train.AdamOptimizer(learning_rate= self.config.lr).minimize(self.seq2seq_loss)
+        
         #train_batch_generator = self.gen_batch_seq2seq(train,batch_size)
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
             #print("TR",len(words),len(words[0]), len(labels), len(labels[0]))
             df = self.next_feed(words, lr=self.config.lr, dropout = self.config.dropout_seq2seq)
-          
-          #  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_concat_rep], feed_dict =df)
+            if(self.config.complete_autoencode_including_test):
+                dev_batch = self.next_feed(words,lr=self.config.lr, dropout = self.config.dropout_seq2seq)
+            	df = self.merge_feeds(df,dev_batch)
+	#  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_concat_rep], feed_dict =df)
             _, train_loss, summary = self.sess.run([self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
             #print("lstm out",lstm_out_shape)
 	   #print("ENC_TIME",enc_time)
@@ -534,14 +545,16 @@ class NERModel(BaseModel):
        	    #if(i%70)
 	     #   print("ACTUAL,PREDICTED",words[0],predictions[0])	
         for words, labels in minibatches(dev, batch_size):
-            dev_batch = self.feed_enc(words)
+            
             #te_loss = 5
             #predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
 	    #te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
-	    if(self.config.complete_autoencode_including_test):
-	        _,te_loss, predictions = self.sess.run([self.seq2seq_train_op,self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
-	    else:
-		te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    #if(self.config.complete_autoencode_including_test):
+	#	 dev_batch = self.next_feed(words,lr=self.config.lr, dropout = self.config.dropout_seq2seq)		       
+	#	 _,te_loss, predictions = self.sess.run([self.seq2seq_train_op,self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    #else:
+	    dev_batch = self.feed_enc(words)
+	    te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
 	    #te_loss = self.compute_seq2seq_acc(words, predictions)
 	    #prog.update(i + 1, [("test loss", te_acc)])
             #print("TE",len(words),len(words[0]),len(predictions), len(predictions[0]))
@@ -556,7 +569,8 @@ class NERModel(BaseModel):
         msg = "Autoencoding testing loss: {}".format(te_loss)
         #te_loss = 5
 	self.logger.info(msg)
-        return te_loss
+	print("Cumulative loss: {}".format(float(train_loss)+float(te_loss)))
+        return 5
 
     def run_epoch(self, train, dev, epoch):
         """Performs one complete pass over the train set and evaluate on dev
@@ -594,7 +608,7 @@ class NERModel(BaseModel):
                 dev_batch = self.feed_enc(words)
            	te_loss = 5
             	word_embeds, encoder_useful_state = self.sess.run([self.word_embeddings,self.encoder_concat_rep], dev_batch)
-        	print("Word embedding shape", word_embeds.shape)
+            print("Word embedding shape", word_embeds.shape)
         #print("Word embeds for 0th sentence and 1st word",word_embeds[0][1]) 
         #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
         #print(len(encoder_useful_state[0][0]))
@@ -926,7 +940,20 @@ class NERModel(BaseModel):
         
         return feed
                      
-   
+    def merge_feeds(self,df1,df2):
+	'''This is hard coded for seq2seq merging of feed dicts. It returns the feed dict concatenated for the following fields: word_ids, sequence_lengths, decoder_targets, labels, max_sentence_length'''
+	
+	df1[self.word_ids] 		= np.append(df1[self.word_ids],df2[self.word_ids],axis=1)
+	df1[self.sequence_lengths] 	= np.append(df1[self.sequence_lengths],df2[self.sequence_lengths],axis=0)
+	df1[self.decoder_targets]  	= np.append(df1[self.decoder_targets],df2[self.decoder_targets], axis=1)
+	df1[self.labels] 		= np.append(df1[self.labels], df2[self.labels],axis=1)
+	df1[self.max_sentence_length]   = max(df1[self.max_sentence_length],df2[self.max_sentence_length])
+	#print(df1[self.word_ids].shape)
+	#print(df1[self.sequence_lengths].shape)
+	#print(df1[self.decoder_targets].shape)
+	#print(df1[self.labels].shape)
+	#print(df1[self.max_sentence_length].shape)
+	return df1	 
                              
     def compute_seq2seq_acc(self, words, predictions):
 	#accuracy = 

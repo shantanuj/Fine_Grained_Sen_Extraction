@@ -36,7 +36,7 @@ EXPERIMENTS:
 5)  Bilstm crf only
 
     a) Rest 200d, 400d lstm
-
+	HAVE TO DO AGAIN WITH HIGHER LR
 	On rest: tr 0.0861; acc. 94.19; f1 79.93; op_f1 86.25 and asp_f1 78.41
 	On laptop: acc: 91.44; op_f1 60.25 and asp_f1 26.74
     b) Rest

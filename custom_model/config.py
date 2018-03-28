@@ -90,7 +90,7 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs  	     = 100
+    nepochs  	     = 200
     #nepochs          = 100
     #NOTE:
     dropout          = 0.7
@@ -99,8 +99,8 @@ class Config():
     seq2seq_batch_size = 50
     lr_method        = "adagrad"
     #lr               = 0.02
-    #lr_decay	     = 1
-    lr              = 0.25 #Seq2seq
+    #lr_decay	     = 0.9
+    lr              = 0.08 #Seq2seq
     lr_decay        = 0.99  #0.9 or 0.6 for absa 
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 100
@@ -117,14 +117,16 @@ class Config():
     use_crf = True # if crf, training is 1.7x slower on CPU
     use_chars = False # if char embedding, training is 3.5x slower on CPU
     use_seq2seq = True #Does model use seq2seq
+
     use_only_seq2seq = False
    #NOTE
-    seq2seq_trained = False#True
-    #seq2seq_trained=  False #Has seq2seq been trained
-    complete_autoencode_including_test = False#True #We only do this once testing data is available
+    #seq2seq_trained = True#True
+    seq2seq_trained=  False #Has seq2seq been trained
+    #complete_autoencode_including_test = False
+    complete_autoencode_including_test = True #We only do this once testing data is available
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
-    
+    use_cosine_sim = False
     def gen_model_extra_str(hidden_size_lstm,use_crf,use_chars,use_seq2seq):
         s = "bilstm{}".format(hidden_size_lstm)
         if(use_crf):
@@ -145,6 +147,7 @@ class Config():
     use_CPU_only = True#False#True
     #NOTE
     model_already_exists = False#True#os.path.isdir(dir_output)
+
     
     extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars,use_seq2seq)
     if(use_seq2seq):
@@ -161,7 +164,9 @@ class Config():
 	if(not bool(x)):
 	    model_already_exists = True
         if(x not in [1,0]):
-	    x = int(input("1 to create or 0 to overwrite")) 
+	    x = int(input("1 to create or 0 to overwrite"))
+	elif(x in [1]):
+	    x= int(input("Are you sure to reset model(1)")) 
     dir_model  = dir_output + "model.weights/"
 
     path_log   = dir_output + "log.txt"
