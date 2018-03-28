@@ -279,9 +279,12 @@ class NERModel(BaseModel):
                 encoder_final_state_h = tf.concat((encoder_fw_final_state.h, encoder_bw_final_state.h),1)
 
                 self.encoder_final_state = LSTMStateTuple(c= encoder_final_state_c, h=encoder_final_state_h)
-
-                self.encoder_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)
-                print(type(self.encoder_concat_rep))
+		if(not self.config.use_only_h):
+               	    self.encoder_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)	       
+           	else:
+		    c_shape = tf.shape(encoder_final_state_c)
+		    self.encoder_concat_rep = tf.concat([encoder_final_state_h, tf.zeros([c_shape[0],c_shape[1]])],1)
+	         #print(type(self.encoder_concat_rep))
 		 #NOTE: Need to stop gradient flow once trained
                 if(self.config.seq2seq_trained):
                     self.encoder_concat_rep = tf.stop_gradient(self.encoder_concat_rep) 
@@ -366,15 +369,25 @@ class NERModel(BaseModel):
             
 	    self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
             self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
- 
+ 	    
 	    if(self.config.use_cosine_sim):
-	    	normalized_seq2seq_enc = tf.nn.l2_normalize(seq2seq_encoder_out, dim=2)
-	    	self.seq2seq_encoder_cosine_similarities = tf.reduce_sum(tf.multiply(normalized_seq2seq_enc, normalized_seq2seq_enc[0,:,])[1:], 2, keep_dims=True)
-	    	self.seq2seq_encoder_cosine_similarities = tf.transpose(self.seq2seq_encoder_cosine_similarities, perm =[1,0,2])
+	    	def get_cosine_similarity_within(tensor):
+		    res_tensor = tf.nn.l2_normalize(tensor,dim=2)
+		    res_tensor = tf.reduce_sum(tf.multiply(res_tensor, res_tensor[0,:,])[1:],2,keep_dims=True)
+		   
+                    res_tensor = tf.transpose(res_tensor, perm = [1,0,2])
+		    return res_tensor
+	        cos_sim_h = get_cosine_similarity_within(seq2seq_encoder_out[:,:,:self.config.seq2seq_enc_hidden_size*2])
+		cos_sim_c = get_cosine_similarity_within(seq2seq_encoder_out[:,:,self.config.seq2seq_enc_hidden_size*2:])
+		self.seq2seq_encoder_cosine_similarities = tf.concat([cos_sim_h, cos_sim_c], axis =-1)
+#	    	normalized_seq2seq_enc = tf.nn.l2_normalize(seq2seq_encoder_out, dim=2)
+#	    	self.seq2seq_encoder_cosine_similarities = tf.reduce_sum(tf.multiply(normalized_seq2seq_enc, normalized_seq2seq_enc[0,:,])[1:], 2, keep_dims=True)
+	    	#self.seq2seq_encoder_cosine_similarities = tf.transpose(self.seq2seq_encoder_cosine_similarities, perm =[1,0,2])
 		if(self.config.use_only_cosine_sim):
-		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_cosine_similarities,tf.zeros([dim2,dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis=-1)	 
+		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_cosine_similarities,tf.zeros([dim2,dim1-1,self.config.seq2seq_enc_hidden_size*4-2])], axis=-1)
+		    #self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_cosine_similarities,tf.zeros([dim2,dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis=-1)	 
 		else:
-		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_embeds, self.seq2seq_encoder_cosine_similarities], axis=-1)   
+		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_embeds[:,:,:-2], self.seq2seq_encoder_cosine_similarities], axis=-1)   #NOTE NOTE NOTE NOTE NOTE We drop the last rep dim to allow for cosine to be incorporated(static graph)
 	    
             if(self.config.train_seq2seq):
 		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)

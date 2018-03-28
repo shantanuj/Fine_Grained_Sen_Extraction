@@ -107,7 +107,7 @@ class Config():
 
     # model hyperparameters
     hidden_size_char = 100 # lstm on chars
-    hidden_size_lstm = 350 # lstm on word embeddings
+    hidden_size_lstm = 400 # lstm on word embeddings
     seq2seq_enc_hidden_size = 75#100 #50
     #seq2seq_enc_hidden_size = 200
     seq2seq_dec_hidden_size = seq2seq_enc_hidden_size*2
@@ -117,19 +117,21 @@ class Config():
     use_crf = True # if crf, training is 1.7x slower on CPU
     use_chars = False # if char embedding, training is 3.5x slower on CPU
     use_seq2seq = True #Does model use seq2seq
-    use_cosine_sim = False #True 
+    use_cosine_sim = True 
     use_only_cosine_sim = True
     use_only_seq2seq = False
+    use_GRU = False
+    use_only_h = False#True
     #use_only_seq2seq = True
    #NOTE
     #seq2seq_trained = True#True
-    seq2seq_trained=  False #Has seq2seq been trained
+    seq2seq_trained=  True #Has seq2seq been trained
     #complete_autoencode_including_test = False
     complete_autoencode_including_test = True #We only do this once testing data is available
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     
-    def gen_model_extra_str(hidden_size_lstm,use_crf,use_chars,use_seq2seq,use_cosine_sim):
+    def gen_model_extra_str(hidden_size_lstm,use_crf,use_chars,use_seq2seq):
         s = "bilstm{}".format(hidden_size_lstm)
         if(use_crf):
             s+='_crf'
@@ -137,8 +139,7 @@ class Config():
             s+='_chars'
         if(use_seq2seq):
             s+='_seq2seq'
-	if(use_cosine_sim):
-	    s+='cos'
+	
         return s
     #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
     #domain = domain_train = "Laptop"
@@ -153,7 +154,7 @@ class Config():
     model_already_exists = False#True#os.path.isdir(dir_output)
 
     
-    extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars,use_seq2seq,use_cosine_sim)
+    extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars,use_seq2seq)
     if(use_seq2seq):
     	extra += '_'+str(seq2seq_enc_hidden_size)
     filename_dev = filename_test = "data/{}test_data.txt".format(domain_test)#"data/Resttest_data.txt"
