@@ -96,7 +96,7 @@ class Config():
     lr_method        = "adagrad"
     #lr               = 0.3
     #lr_decay	     = 0.99
-    lr              = 0.17 #Seq2seq
+    lr              = 0.085 #Seq2seq
     lr_decay        = 0.99  #0.9 or 0.6 for absa 
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 100
@@ -117,7 +117,7 @@ class Config():
     #Seq2seq stuff
     use_cosine_sim = True and use_seq2seq 
     use_only_cosine_sim = False and use_seq2seq
-    use_only_seq2seq = False and use_seq2seq
+    use_only_seq2seq = True and use_seq2seq
     use_GRU = False and use_seq2seq
     use_only_h = False and use_seq2seq #True
     #use_only_seq2seq = True

@@ -549,9 +549,9 @@ class NERModel(BaseModel):
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
             #print("TR",len(words),len(words[0]), len(labels), len(labels[0]))
             df = self.next_feed(words, lr=self.config.lr, dropout = self.config.dropout_seq2seq)
-            if(self.config.complete_autoencode_including_test):
-                dev_batch = self.next_feed(words,lr=self.config.lr, dropout = self.config.dropout_seq2seq)
-            	df = self.merge_feeds(df,dev_batch)
+            #if(self.config.complete_autoencode_including_test):
+                #dev_batch = self.next_feed(words,lr=self.config.lr, dropout = self.config.dropout_seq2seq)
+            	#df = self.merge_feeds(df,dev_batch)
 	#  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_concat_rep], feed_dict =df)
             _, train_loss, summary = self.sess.run([self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
             #print("lstm out",lstm_out_shape)
@@ -569,12 +569,12 @@ class NERModel(BaseModel):
             #te_loss = 5
             #predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
 	    #te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
-	    #if(self.config.complete_autoencode_including_test):
-	#	 dev_batch = self.next_feed(words,lr=self.config.lr, dropout = self.config.dropout_seq2seq)		       
-	#	 _,te_loss, predictions = self.sess.run([self.seq2seq_train_op,self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    if(self.config.complete_autoencode_including_test):
+		 dev_batch = self.next_feed(words,lr=self.config.lr, dropout = self.config.dropout_seq2seq)		       
+		 _,te_loss, predictions = self.sess.run([self.seq2seq_train_op,self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
 	    #else:
-	    dev_batch = self.feed_enc(words)
-	    te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    #dev_batch = self.feed_enc(words)
+	    #te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
 	    #te_loss = self.compute_seq2seq_acc(words, predictions)
 	    #prog.update(i + 1, [("test loss", te_acc)])
             #print("TE",len(words),len(words[0]),len(predictions), len(predictions[0]))
@@ -594,7 +594,7 @@ class NERModel(BaseModel):
         #te_loss = 5
 	self.logger.info(msg)
 	#print("Cumulative loss: {}".format(float(train_loss)+float(te_loss)))
-        return model_comparison_val
+        return 4#model_comparison_val
 
     def run_epoch(self, train, dev, epoch):
         """Performs one complete pass over the train set and evaluate on dev

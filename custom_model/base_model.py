@@ -112,8 +112,11 @@ class BaseModel(object):
 
     def train_seq2seq(self, train, dev):
         if self.config.model_already_exists:
-	    with open(self.config.dir_output+"seq2seq_min",'r') as f1:
-		best_score = float(f1.read())	    
+	    try:
+	        with open(self.config.dir_output+"seq2seq_min",'r') as f1:
+		    best_score = float(f1.read())
+	    except:
+		best_score = float(input("Couldn't find best score, enter it here incase you remember: "))	    
 	else:
 	    best_score = 1e2 
         nepoch_no_imprv = 0 # for early stopping
@@ -127,7 +130,7 @@ class BaseModel(object):
             self.config.lr *= self.config.lr_decay
 
 	    if((epoch+1)%33==0 and self.config.train_seq2seq and self.config.use_seq2seq): #EMPIRICAL evidence
-		self.config.lr = config_lr_original_val
+		self.config.lr = config_lr_original_val*(self.config.lr_decay**(epoch/2))
             #Early stopping
             if score <= best_score: #loss is being used, therefore lesser than is better
                 nepoch_no_imprv = 0
@@ -152,7 +155,13 @@ class BaseModel(object):
 
         """
         best_score = 0
-        nepoch_no_imprv = 0 # for early stopping
+        if self.config.model_already_exists:
+	    try:
+	        with open(self.config.dir_output+"absa_min",'r') as f1:
+		    best_score = float(f1.read())
+	    except:
+		best_score = float(input("Couldn't find best score, enter it here incase you remember: "))
+	nepoch_no_imprv = 0 # for early stopping
         self.add_summary() # tensorboard
 
         for epoch in range(self.config.nepochs):
@@ -166,7 +175,9 @@ class BaseModel(object):
             if score >= best_score:
                 nepoch_no_imprv = 0
                 self.save_session()
-                best_score = score
+                with open(self.config.dir_output+"absa_min",'w') as f1:
+		    f1.write(str(score))
+		best_score = score
                 self.logger.info("- new best score!")
             else:
                 nepoch_no_imprv += 1
