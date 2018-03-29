@@ -44,6 +44,10 @@ class NERModel(BaseModel):
 	#to be used for seq2seq decoder
         if(self.config.use_seq2seq):
             self.decoder_targets = tf.placeholder(tf.int32, shape = [None, None], name="decoder_targets")
+            self.max_sentence_length = tf.placeholder(dtype=tf.int32, shape=[], name="max_sentence_length")
+            self.mask_matrix = tf.placeholder(dtype=tf.bool, shape=[None,None], name="mask_matrix")
+            self.ones = tf.placeholder(dtype=tf.int32, shape =[None], name="ones")
+            
         # shape = (batch size, max length of sentence in batch)
         self.labels = tf.placeholder(tf.int32, shape=[None, None],
                         name="labels")
@@ -55,8 +59,7 @@ class NERModel(BaseModel):
                         name="lr")
 
 	#Batch specific
-	self.max_sentence_length = tf.placeholder(dtype=tf.int32, shape=[], name="max_sentence_length")
-	self.mask_matrix = tf.placeholder(dtype=tf.bool, shape=[None,None], name="mask_matrix")
+	
 	#self.pad_token = '<PAD>'
 	#self.eos_token = '<END>'
 	#self.PAD = self.config.vocab_words[self.pad_token]
@@ -96,7 +99,7 @@ class NERModel(BaseModel):
             feed[self.word_lengths] = word_lengths
 
         if labels is not None:
-            labels, _ = pad_sequences(labels, self.config.vocab_tags['O'])
+            labels, _, _ = pad_sequences(labels, self.config.vocab_tags['O'])
             feed[self.labels] = labels
 
         if lr is not None:
@@ -106,16 +109,21 @@ class NERModel(BaseModel):
             feed[self.dropout] = dropout
         if (self.config.use_seq2seq):
             feed[self.decoder_targets] = word_ids
-	    if(not self.config.train_seq2seq):#Seq2seq has been trained-> Use for absa task
-	    	np_mask_matrix = np.ones((max_sentence_length, max_sentence_length))
-	   	a = np.array(max_sentence_length)
-		np_mask_matrix[np.arange(len(a)),a] = 0
-		
-	    else:
-		np_mask_matrix = np.ones((1,1))
-	    np_mask_matrix = np_mask_matrix.astype(bool)
-       	    feed[self.mask_matrix] =  np_mask_matrix
-	feed[self.max_sentence_length] = max_sentence_length
+            if(not self.config.train_seq2seq):#Seq2seq has been trained-> Use for absa task
+                np_mask_matrix = np.ones((max_sentence_length, max_sentence_length))
+                
+                a = np.array(range(max_sentence_length))
+                np_mask_matrix[np.arange(len(a)),a] = 0
+                
+            else:
+                np_mask_matrix = np.ones((1,1))
+            np_mask_matrix = np_mask_matrix.astype(bool)
+                
+            feed[self.ones] = np.ones(shape=(len(words)), dtype="int32")
+            feed[self.mask_matrix] =  np_mask_matrix
+            feed[self.max_sentence_length] = max_sentence_length
+            
+            
 	return feed, sequence_lengths
 
     
@@ -180,7 +188,8 @@ class NERModel(BaseModel):
                 word_embeddings = tf.concat([word_embeddings, output], axis=-1)
 
         self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout)
-
+	#if(self.config.use_only_seq2seq):
+	    #self.word_embeddings = tf.zeros([self.config.nwords, tf.shape(self.word_embeddings)[1],self.config.dim_word])
     
     def word_drop_pre_bridge(self, input_word_seq_tensor, seq_lengths, max_seq_length=None):
             #NOTE: There are no variables in the function, so shouldn't matter for the tf graph construction (hopefully)
@@ -194,13 +203,13 @@ class NERModel(BaseModel):
         if self.config.use_seq2seq:
             if(max_seq_length is None):
                 max_seq_length = self.max_sentence_length
-		print(max_seq_length)
+            print(max_seq_length)
             #1) Create mask to select word indices ( 1 dropped every time)
             #np_mask_matrix = np.ones((max_seq_length, max_seq_length))
             #a = np.array(range(max_seq_length))
             #np_mask_matrix[np.arange(len(a)),a] = 0 #go through each row, and for that particular column set 0 (opposite of a diagonal matrix)
             #tf_mask_matrix = tf.convert_to_tensor(np_mask_matrix, dtype="bool")
-	    tf_mask_matrix = self.mask_matrix
+            tf_mask_matrix = self.mask_matrix
             padding = tf.constant([[0,0],[0,1]],dtype="int32")
 
             #2nd operation add dimensions to both input tensors`
@@ -208,30 +217,47 @@ class NERModel(BaseModel):
             tensor_seq_lengths = tf.expand_dims(seq_lengths, 0)
 
             #3rd operation--> Make tensor for seq_lengths for dropped indices (they're always 1 less)
-            seq_lengths_for_dropped = tf.expand_dims(seq_lengths - tf.ones(shape=(tf.shape(tf_mask_matrix)[0],1), dtype ="int32"),0)
+            seq_lengths_for_dropped = tf.expand_dims(seq_lengths - self.ones,0)
 
-
+            shape_input_word_seq = input_word_seq_tensor.get_shape()#tf.shape(input_word_seq_tensor)
             #4th operation --> looped Applying mask matrix to obtain dropped word ids; each result is appended to row of resultant_tensor
-            for drop_index in range(max_sequence_length):
-                f = lambda word_seq: tf.boolean_mask(word_seq, tf_mask_matrix[:,drop_index])
-                resultant_tensor = tf.concat([resultant_tensor, tf.expand_dims(tf.pad(tf.map_fn(f, input_word_seq_tensor), padding, "CONSTANT"),0)],0)
-                tensor_seq_lengths = tf.concat([tensor_seq_lengths, seq_lengths_for_dropped],0)
+            drop_index = tf.constant(0)
+    
+            def condition(resultant_tensor, tensor_seq_lengths, drop_index):
+                return drop_index<max_seq_length
 
-            #5th operation-> reshape of tensor
+            def body(resultant_tensor, tensor_seq_lengths, drop_index):
+                f = lambda word_seq: tf.boolean_mask(word_seq, tf_mask_matrix[:,drop_index])#,padding,"CONSTANT") 
+                '''Apply masking and padding'''
+                temp = tf.pad(tf.map_fn(f, input_word_seq_tensor), padding, "CONSTANT") #We apply mask and then pad result to enable concatenation with original 
+                temp = tf.expand_dims(temp,0)
+                resultant_tensor = tf.concat([resultant_tensor,temp],0)
+                tensor_seq_lengths = tf.concat([tensor_seq_lengths, seq_lengths_for_dropped],0)
+                drop_index+=1
+                return resultant_tensor, tensor_seq_lengths, drop_index    
+	
+    
+            resultant_tensor, tensor_seq_lengths, drop_index = tf.while_loop(condition, body,[resultant_tensor, tensor_seq_lengths,0], shape_invariants=[tf.TensorShape([None,shape_input_word_seq[0],shape_input_word_seq[1]]),tf.TensorShape([None,shape_input_word_seq[0],]),drop_index.get_shape()])
+
+	    #5th operation-> reshape of tensorshape_input_word_seq
             # The tensor is shaped such that the first n rows correspond to the first sentence (n is the sequence length)
-            resultant_tensor = tf.reshape(resultant_tensor, [resultant_tensor.shape[0]*resultant_tensor.shape[1], resultant_tensor.shape[2]])
-            tensor_seq_lengths = tf.reshape(tensor_seq_lengths, [tensor_seq_lengths.shape[0]*tensor_seq_lengths.shape[1],])
+            resultant_tensor_shape = tf.shape(resultant_tensor)
+            resultant_tensor = tf.reshape(resultant_tensor, [resultant_tensor_shape[0]*resultant_tensor_shape[1], resultant_tensor_shape[2]])
+            tensor_seq_lengths = tf.reshape(tensor_seq_lengths, [resultant_tensor_shape[0]*resultant_tensor_shape[1],])
+            
 	#NOTE: Converting the tensor from batch*time -> time*batch BECAUSE OUR SPECIFIC ENCODER expects in that manner
-            resultant_tensor = resultant_tensor.swapaxes(0,1) 
+            resultant_tensor = tf.transpose(resultant_tensor, [1,0]) 
             return resultant_tensor, tensor_seq_lengths
 
-    			
+   
+	    
+	     			
     def convert_tensors(self):
 	#NOTE Word ids during training of seq2seq are of different format(time*batch) whereas in absa task they are fed normal as batch*time) 
 	if(self.config.train_seq2seq):
 	    self.seq2seq_input_sequences, self.seq2seq_input_sequence_lengths =  self.word_ids, self.sequence_lengths
         else:
-	    self.seq2seq_input_sequnces, self.seq2seq_input_sequence_lengths = self.word_drop_pre_bridge(self.word_ids, self.sequence_lengths)
+	    self.seq2seq_input_sequences, self.seq2seq_input_sequence_lengths = self.word_drop_pre_bridge(self.word_ids, self.sequence_lengths)
 
     def add_seq2seq(self):
 	"""This stores the seq2seq model which will be imported as part of the training graph since other options of creating a separate training graph/session and importing seemed lengthy. 
@@ -243,29 +269,35 @@ class NERModel(BaseModel):
 #NOTE: 1) There might be a more efficient manner to load and train the seq2seq separately, and then just use the final weights. 
 #      2) Blocking gradients should not impact elements linked to this
         if(self.config.use_seq2seq):
-            with tf.variable_scope('seq2seq_encoder'):
-		self.seq2seq_input_sequences_embeds = tf.nn.embedding_lookup(self._word_embeddings, self.seq2seq_input_sequences, name="word_embeddings")
+	    
+            with tf.variable_scope('seq2seq_encoder',reuse=tf.AUTO_REUSE):
+                self.seq2seq_input_sequences_embeds = tf.nn.embedding_lookup(self._word_embeddings, self.seq2seq_input_sequences, name="word_embeddings")
 
                 encoder_cell = LSTMCell(self.config.seq2seq_enc_hidden_size)
+
                 ((encoder_fw_outputs, encoder_bw_outputs), (encoder_fw_final_state, encoder_bw_final_state)) = (tf.nn.bidirectional_dynamic_rnn(cell_fw=encoder_cell, cell_bw=encoder_cell, inputs = self.seq2seq_input_sequences_embeds, sequence_length = self.seq2seq_input_sequence_lengths, dtype = tf.float32, time_major=True))
                #encoder_outputs = tf.concat((encoder_fw_outputs, encoder_bw_outputs),2)
                 encoder_final_state_c = tf.concat((encoder_fw_final_state.c, encoder_bw_final_state.c),1)
                 encoder_final_state_h = tf.concat((encoder_fw_final_state.h, encoder_bw_final_state.h),1)
 
                 self.encoder_final_state = LSTMStateTuple(c= encoder_final_state_c, h=encoder_final_state_h)
-
-                self.encoder_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)
-                print(type(self.encoder_concat_rep))
+		if(not self.config.use_only_h):
+               	    self.encoder_concat_rep = tf.concat([encoder_final_state_c, encoder_final_state_h], 1)	       
+           	else:
+		    c_shape = tf.shape(encoder_final_state_c)
+		    self.encoder_concat_rep = tf.concat([encoder_final_state_h, tf.zeros([c_shape[0],c_shape[1]])],1)
+	         #print(type(self.encoder_concat_rep))
 		 #NOTE: Need to stop gradient flow once trained
                 if(self.config.seq2seq_trained):
                     self.encoder_concat_rep = tf.stop_gradient(self.encoder_concat_rep) 
     
         
-            with tf.variable_scope('seq2seq_decoder'):
+            with tf.variable_scope('seq2seq_decoder',reuse=tf.AUTO_REUSE):
                 encoder_max_time, batch_size = tf.unstack(tf.shape(self.seq2seq_input_sequences))
          	#self.encoder_max = encoder_max_time
 		#self.batch_max = batch_size 
                 decoder_cell = LSTMCell(self.config.seq2seq_dec_hidden_size)
+
                 decoder_lengths = self.sequence_lengths + 3 #2 additional terms
                 W_dec = tf.Variable(tf.random_uniform([self.config.seq2seq_dec_hidden_size, self.config.nwords],-1,1), dtype = tf.float32)
                 b_dec = tf.Variable(tf.zeros([self.config.nwords]), dtype = tf.float32)
@@ -323,20 +355,67 @@ class NERModel(BaseModel):
          #       stepwise_cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels = tf.one_hot(decoder_targets, depth = self.config.nwords, dtype = tf.float32), logits = self.decoder_logits,)
           #      self.seq2seq_loss = tf.reduce_mean(stepwise_cross_entropy)
             
- 
+     def condense_layer(self,concat_rep):
+	if(self.config.use_seq2seq and self.config.use_condense_layer): 
+	    with tf.variable_scope("condense"):
+		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [2*self.config.seq2seq_enc_hidden_size*8, self.config.condense_dims])
+		b_con = tf.get_variable('b_con', dtype = tf.float32, shape= [self.config.condense_dims], initializer = tf.zeros_initializer())
+		return tf.nn.sigmoid(matmul(concat_rep,W_con)+b_con)
+	    
+
     def bridge_seq2seq_embeddings(self):
 	#This is to convert the seq2seq outputs of shape 2d Time*Batch --> Perform comparison of missing word with all words-->convert into 3d shape(Batch*Time*Embeds), and then concatenate as batch*Time*Embeds with word_embeddings
         if self.config.use_seq2seq:
 	    #print(self.word
-	    dim1 = tf.shape(self.word_ids)[-1]+1
+	    dim1 = tf.shape(self.word_ids)[-1]+1 #Extra since normal rep + n missing reps
 	    dim2 = tf.shape(self.word_ids)[0]
 	    #print(dim1, type(dim1))
 	    #print(type(self.encoder_concat_rep))
-            seq2seq_encoder_out = tf.reshape(self.encoder_concat_rep,[dim1, dim2, self.config.seq2seq_enc_hidden_size*4]) #Batch_size*Dims output
-            self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
-	    self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
-            self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
-	
+            seq2seq_encoder_out = tf.reshape(self.encoder_concat_rep,[dim1, dim2, self.config.seq2seq_enc_hidden_size*4]) #Reshape time major,dims to Time(0th is normal one)*Batch*Dims output
+
+	    #NOTE: seq2seq_encoder_out[0:]<-- corresponds to normal representation for all sentences. The 2nd dimension is the batch, the first dimension is seq_length+1
+	    #So we have to perform an operation on the first dimension first value(normal all words rep of sentence) with all other missing word reps. 
+            if(self.config.use_condense_layer):
+		concat_within = lambda row: tf.concat([row,seq2seq_encoder_out[0,:]],1)
+		seq2seq_encoder_out = tf.map_fn(concat_within,seq2seq_encoder_out,dtype=tf.float32)[1:,]
+		self.seq2seq_encoder_embeds = tf.map_fn(condense_layer, seq2seq_encoder_out)
+	    
+		#1) Concatenate 0th with every element downwards
+		#2) Perform batch computation of each row and then column
+	    else:    
+		self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
+            self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
+ 	    
+	    if(self.config.use_cosine_sim):
+	    	def get_cosine_similarity_within(tensor):
+		    res_tensor = tf.nn.l2_normalize(tensor,dim=2)
+		    res_tensor = tf.reduce_sum(tf.multiply(res_tensor, res_tensor[0,:,])[1:],2,keep_dims=True)
+		   
+                    res_tensor = tf.transpose(res_tensor, perm = [1,0,2])
+		    return res_tensor
+	        cos_sim_h = get_cosine_similarity_within(seq2seq_encoder_out[:,:,:self.config.seq2seq_enc_hidden_size*2])
+		cos_sim_c = get_cosine_similarity_within(seq2seq_encoder_out[:,:,self.config.seq2seq_enc_hidden_size*2:])
+		self.seq2seq_encoder_cosine_similarities = tf.concat([cos_sim_h, cos_sim_c], axis =-1)
+#	    	normalized_seq2seq_enc = tf.nn.l2_normalize(seq2seq_encoder_out, dim=2)
+#	    	self.seq2seq_encoder_cosine_similarities = tf.reduce_sum(tf.multiply(normalized_seq2seq_enc, normalized_seq2seq_enc[0,:,])[1:], 2, keep_dims=True)
+	    	#self.seq2seq_encoder_cosine_similarities = tf.transpose(self.seq2seq_encoder_cosine_similarities, perm =[1,0,2])
+		if(self.config.use_only_cosine_sim):
+		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_cosine_similarities,tf.zeros([dim2,dim1-1,self.config.seq2seq_enc_hidden_size*4-2])], axis=-1)
+		    #self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_cosine_similarities,tf.zeros([dim2,dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis=-1)	 
+		else:
+		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_embeds[:,:,:-2], self.seq2seq_encoder_cosine_similarities], axis=-1)   #NOTE NOTE NOTE NOTE NOTE We drop the last rep dim to allow for cosine to be incorporated(static graph)
+	    
+            if(self.config.train_seq2seq):
+		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)
+		self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
+	    else:
+		#self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
+		if(self.config.use_only_seq2seq):
+		    self.word_embeddings = tf.concat([tf.zeros([dim2,dim1-1,self.config.dim_word]),self.seq2seq_encoder_embeds],axis=-1)
+		else:
+		    self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
+		  	    
+	    
     def add_logits_op(self):
         """Defines self.logits
 
@@ -350,7 +429,8 @@ class NERModel(BaseModel):
                     cell_fw, cell_bw, self.word_embeddings,
                     sequence_length=self.sequence_lengths, dtype=tf.float32)
             output = tf.concat([output_fw, output_bw], axis=-1)
-            output = tf.nn.dropout(output, self.dropout)
+            self.lstm_out_shape = tf.shape(self.word_embeddings)
+	    output = tf.nn.dropout(output, self.dropout)
 
         with tf.variable_scope("proj"):
             W = tf.get_variable("W", dtype=tf.float32,
@@ -363,7 +443,8 @@ class NERModel(BaseModel):
             output = tf.reshape(output, [-1, 2*self.config.hidden_size_lstm])
             pred = tf.matmul(output, W) + b
             self.logits = tf.reshape(pred, [-1, nsteps, self.config.ntags])
-
+	    #if(self.config.train_seq2seq and self.config.use_seq2seq):
+	#	self.logits = tf.stop_gradient(self.logits)
 
     def add_pred_op(self):
         """Defines self.labels_pred
@@ -401,7 +482,7 @@ class NERModel(BaseModel):
             self.seq2seq_loss = tf.reduce_mean(self.stepwise_cross_entropy)
         
         # for tensorboard
-        if(self.config.train_seq2seq):
+        if(self.config.train_seq2seq and self.config.use_seq2seq):
             tf.summary.scalar("seq2seq_loss",self.seq2seq_loss)
         else:
             tf.summary.scalar("loss", self.loss)
@@ -417,19 +498,23 @@ class NERModel(BaseModel):
             self.add_loss_op()
         else: 
 	    self.convert_tensors()
-	    self.add_logits_op()
+	    
             self.add_seq2seq()
             self.bridge_seq2seq_embeddings()
+	    self.add_logits_op()
 	    self.add_pred_op()
             self.add_loss_op()		
-        
-        if(self.config.use_seq2seq):#This is also a node in the graph and hence needs to be stored
+       
+        #self.add_train_op(self.config.lr_method, self.lr, self.loss, self.config.clip)
+        if(self.config.use_seq2seq): #and self.config.train_seq2seq):#This is also a node in the graph and hence needs to be stored
         # Generic functions that add training op and initialize session
-            self.add_train_op(self.config.lr_method, self.lr, self.seq2seq_loss,
-                self.config.clip, True)
+	    # self.add_train_op(self.config.lr_method, self.lr, self.loss, self.config.clip)
+	     self.add_train_op(self.config.lr_method, self.lr, self.seq2seq_loss, self.config.clip, True)
+        #else:
+	 #    self.add_train_op(self.config.lr_method, self.lr, self.seq2seq_loss, self.config.clip, True)
+ 	  #   self.add_train_op(self.config.lr_method, self.lr, self.loss, self.config.clip) 
         
-        self.add_train_op(self.config.lr_method, self.lr, self.loss,
-                self.config.clip)
+        self.add_train_op(self.config.lr_method, self.lr, self.loss, self.config.clip)
         self.initialize_session() # now self.sess is defined and vars are init
 
 
@@ -475,34 +560,57 @@ class NERModel(BaseModel):
         nbatches = (len(train) + batch_size - 1) // batch_size
         prog = Progbar(target=nbatches)
         #train_op = tf.train.AdamOptimizer(learning_rate= self.config.lr).minimize(self.seq2seq_loss)
+        tr_ep_loss = 0.0
         #train_batch_generator = self.gen_batch_seq2seq(train,batch_size)
         for i, (words, labels) in enumerate(minibatches(train, batch_size)):
             #print("TR",len(words),len(words[0]), len(labels), len(labels[0]))
             df = self.next_feed(words, lr=self.config.lr, dropout = self.config.dropout_seq2seq)
-          
-          #  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_concat_rep], feed_dict =df)
+            #if(self.config.complete_autoencode_including_test):
+                #dev_batch = self.next_feed(words,lr=self.config.lr, dropout = self.config.dropout_seq2seq)
+            	#df = self.merge_feeds(df,dev_batch)
+	#  cross_entropy, decoder_logits, encoder_useful_state = self.sess.run([self.stepwise_cross_entropy, self.decoder_logits,self.encoder_concat_rep], feed_dict =df)
             _, train_loss, summary = self.sess.run([self.seq2seq_train_op, self.seq2seq_loss, self.merged], feed_dict = df)
-            
+            #print("lstm out",lstm_out_shape)
 	   #print("ENC_TIME",enc_time)
            # print("BATCH_SIZE",b_size) 
             #print(cross_entropy)
             #print(decoder_logits[0])
             #print(encoder_useful_state[0])
     	    prog.update(i + 1, [("train loss", train_loss)])
+	    tr_ep_loss+=train_loss
        	    #if(i%70)
 	     #   print("ACTUAL,PREDICTED",words[0],predictions[0])	
         for words, labels in minibatches(dev, batch_size):
-            dev_batch = self.feed_enc(words)
-	    te_loss = 5
-            predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
+            
+            #te_loss = 5
+            #predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
+	    #te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    if(self.config.complete_autoencode_including_test):
+		 dev_batch = self.next_feed(words,lr=self.config.lr, dropout = self.config.dropout_seq2seq)		       
+		 _,te_loss, predictions = self.sess.run([self.seq2seq_train_op,self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    #else:
+	    #dev_batch = self.feed_enc(words)
+	    #te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    #te_loss = self.compute_seq2seq_acc(words, predictions)
+	    #prog.update(i + 1, [("test loss", te_acc)])
             #print("TE",len(words),len(words[0]),len(predictions), len(predictions[0]))
+        #print("Word embedding shape", word_embeds.shape)
+        #print("Word embeds for 0th sentence and 1st word",word_embeds[0][1])
         words = np.transpose(np.array(words))
-	predictions = np.transpose(np.array(predictions))
-	print("ACTUAL,PREDICTED",words[2],predictions[2])
-        print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
-	msg = "Autoencoding testing loss: {}%2f".format(te_loss)
-        self.logger.info(msg)
-        return te_loss
+        predictions = np.transpose(predictions)
+	
+        print("ACTUAL,PREDICTED", words[1], predictions[1])
+	#print("AC, PR", words[2],predictions[2])
+        #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
+        msg = "Autoencoding testing loss: {}".format(te_loss)
+	if(self.config.complete_autoencode_including_test):
+	    model_comparison_val =  tr_ep_loss
+	else:
+	    model_comparison_val = te_loss
+        #te_loss = 5
+	self.logger.info(msg)
+	#print("Cumulative loss: {}".format(float(train_loss)+float(te_loss)))
+        return 4#model_comparison_val
 
     def run_epoch(self, train, dev, epoch):
         """Performs one complete pass over the train set and evaluate on dev
@@ -535,13 +643,15 @@ class NERModel(BaseModel):
             if i % 10 == 0:
                 self.file_writer.add_summary(summary, epoch*nbatches + i)
 	
-	for words, labels in minibatches(dev, self.config.batch_size):
-            dev_batch = self.feed_enc(words)
-	    te_loss = 5
-            encoder_useful_state = self.sess.run([self.encoder_concat_rep], dev_batch)
-        
-	print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
-	print(len(encoder_useful_state[0][0]))
+        if(self.config.use_seq2seq):
+            for words, labels in minibatches(dev, self.config.batch_size):
+                dev_batch = self.feed_enc(words)
+           	te_loss = 5
+            	word_embeds, encoder_useful_state = self.sess.run([self.word_embeddings,self.encoder_concat_rep], dev_batch)
+            #print("Word embedding shape", word_embeds.shape)
+        #print("Word embeds for 0th sentence and 1st word",word_embeds[0][1]) 
+        #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
+        #print(len(encoder_useful_state[0][0]))
 	
         metrics = self.run_evaluate(dev)
         msg = " - ".join(["{} {:04.2f}".format(k, v)
@@ -770,6 +880,8 @@ class NERModel(BaseModel):
     def next_feed(self, batch, lr = 0.02, labels = None, dropout= 1.0):
         encoder_inputs_, encoder_input_lengths_ = self.batch_modify(batch)
         #print(self.config.EOS, self.config.PAD)
+        max_sentence_length = encoder_inputs_.shape[0] #Time major
+        batch_size = encoder_inputs_.shape[-1] #Time*Batch
         decoder_targets_, _ = self.batch_modify(
             [(sequence) + [self.config.EOS] + [self.config.PAD] * 2 for sequence in batch] #additional 3 spaces
         )
@@ -796,23 +908,46 @@ class NERModel(BaseModel):
 
         if dropout is not None:
             feed[self.dropout] = dropout
+        if (self.config.use_seq2seq):
+            
+            if(not self.config.train_seq2seq):#Seq2seq has been trained-> Use for absa task
+                np_mask_matrix = np.ones((max_sentence_length, max_sentence_length))
+                feed[self.decoder_targets] = encoder_inputs_
+                a = np.array(range(max_sentence_length))
+                np_mask_matrix[np.arange(len(a)),a] = 0
+                #NOTE: When for ABSA task we feed encoder, we feed as normal (the tf graph converts to time major format)
+                feed[self.word_ids] = encoder_inputs_.swapaxes(0,1)
+                
+            else:
+                np_mask_matrix = np.ones((1,1))
+            
+	    np_mask_matrix = np_mask_matrix.astype(bool)
+                
+            feed[self.ones] = np.ones(shape=(batch_size), dtype="int32")
+            feed[self.mask_matrix] =  np_mask_matrix
+            feed[self.max_sentence_length] = max_sentence_length
         return feed
 
     def feed_enc(self, enc_batch, lr = 0.02, labels = None, dropout= 1.0):
     
         
         encoder_inputs_, encoder_input_lengths_ = self.batch_modify(enc_batch)
-        
-        feed = {
+        #print(encoder_inputs_.shape)
+        max_sentence_length = encoder_inputs_.shape[0]
+        batch_size = encoder_inputs_.shape[-1]
+        decoder_targets_, _ = self.batch_modify(
+            [(sequence) + [self.config.EOS] + [self.config.PAD] * 2 for sequence in enc_batch] #additional 3 spaces
+        )
+	feed = {
             self.word_ids: encoder_inputs_, 
             self.sequence_lengths: encoder_input_lengths_,
-            self.decoder_targets: encoder_inputs_}
+            self.decoder_targets: decoder_targets_,}
         
         if self.config.use_chars:
             feed[self.char_ids] = char_ids
             feed[self.word_lengths] = word_lengths
         
-        feed[self.labels] = encoder_inputs_
+        feed[self.labels] = decoder_targets_
         if labels is not None:
             labels, _ = pad_sequences(labels, self.config.vocab_tags['O'])
             feed[self.labels] = labels
@@ -823,10 +958,43 @@ class NERModel(BaseModel):
         if dropout is not None:
             feed[self.dropout] = dropout
             
+        if (self.config.use_seq2seq):
+            #feed[self.decoder_targets] = encoder_inputs_
+            if(not self.config.train_seq2seq):#Seq2seq has been trained-> Use for absa task
+                np_mask_matrix = np.ones((max_sentence_length, max_sentence_length))
+                
+                a = np.array(range(max_sentence_length))
+                np_mask_matrix[np.arange(len(a)),a] = 0
+                #NOTE: When for ABSA task we feed encoder, we feed as normal (the tf graph converts to time major format)
+                feed[self.word_ids] = encoder_inputs_.swapaxes(0,1)
+                
+            else:
+                np_mask_matrix = np.ones((1,1))
+            
+	    np_mask_matrix = np_mask_matrix.astype(bool)
+                #shape=(len(words))
+            feed[self.ones] = np.ones(shape=(batch_size), dtype="int32")
+            feed[self.mask_matrix] =  np_mask_matrix
+            feed[self.max_sentence_length] = max_sentence_length     
             
         
         return feed
                      
-   
+    def merge_feeds(self,df1,df2):
+	'''This is hard coded for seq2seq merging of feed dicts. It returns the feed dict concatenated for the following fields: word_ids, sequence_lengths, decoder_targets, labels, max_sentence_length'''
+	
+	df1[self.word_ids] 		= np.append(df1[self.word_ids],df2[self.word_ids],axis=1)
+	df1[self.sequence_lengths] 	= np.append(df1[self.sequence_lengths],df2[self.sequence_lengths],axis=0)
+	df1[self.decoder_targets]  	= np.append(df1[self.decoder_targets],df2[self.decoder_targets], axis=1)
+	df1[self.labels] 		= np.append(df1[self.labels], df2[self.labels],axis=1)
+	df1[self.max_sentence_length]   = max(df1[self.max_sentence_length],df2[self.max_sentence_length])
+	#print(df1[self.word_ids].shape)
+	#print(df1[self.sequence_lengths].shape)
+	#print(df1[self.decoder_targets].shape)
+	#print(df1[self.labels].shape)
+	#print(df1[self.max_sentence_length].shape)
+	return df1	 
                              
-   
+    def compute_seq2seq_acc(self, words, predictions):
+	#accuracy = 
+	return 5

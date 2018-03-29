@@ -86,7 +86,7 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs  	     = 200
+    nepochs  	     = 10
     #nepochs          = 100
     #NOTE:
     dropout          = 0.7
@@ -94,10 +94,10 @@ class Config():
     batch_size       = 25
     seq2seq_batch_size = 50
     lr_method        = "adagrad"
-    #lr               = 0.3
-    #lr_decay	     = 0.99
-    lr              = 0.085 #Seq2seq
-    lr_decay        = 0.99  #0.9 or 0.6 for absa 
+    lr               = 0.3
+    lr_decay	     = 0.99
+   # lr              = 0.085 #Seq2seq
+   # lr_decay        = 0.99  #0.9 or 0.6 for absa 
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 100
 
@@ -105,9 +105,10 @@ class Config():
     hidden_size_char = 100 # lstm on chars
     hidden_size_lstm = 400 # lstm on word embeddings
     seq2seq_enc_hidden_size = 75#100 #50
+    condense_dims = 100 #
     #seq2seq_enc_hidden_size = 200
     seq2seq_dec_hidden_size = seq2seq_enc_hidden_size*2
-		
+ 		
 
     # NOTE: if both chars and crf, only 1.6x slower on GPU
     use_crf = True # if crf, training is 1.7x slower on CPU
@@ -115,21 +116,23 @@ class Config():
     use_seq2seq = True #False #Does model use seq2seq
     
     #Seq2seq stuff
+    use_condense_layer = False and use_seq2seq
+    use_only_seq2seq = False and use_seq2seq
     use_cosine_sim = True and use_seq2seq 
     use_only_cosine_sim = False and use_seq2seq
-    use_only_seq2seq = True and use_seq2seq
+    
     use_GRU = False and use_seq2seq
     use_only_h = False and use_seq2seq #True
     #use_only_seq2seq = True
    #NOTE
     #seq2seq_trained = True#True
-    seq2seq_trained=  False and use_seq2seq#Has seq2seq been trained
+    seq2seq_trained=  True and use_seq2seq#Has seq2seq been trained
     #complete_autoencode_including_test = False
     complete_autoencode_including_test = True and use_seq2seq #We only do this once testing data is available
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     
-    def gen_model_extra_str(hidden_size_lstm,use_crf,use_chars,use_seq2seq):
+    def gen_model_extra_str(hidden_size_lstm,use_crf,use_chars,use_seq2seq,use_condense_layer,condense_dims=0):
         s = "bilstm{}".format(hidden_size_lstm)
         if(use_crf):
             s+='_crf'
@@ -137,6 +140,8 @@ class Config():
             s+='_chars'
         if(use_seq2seq):
             s+='_seq2seq'
+	if(use_condense_layer):
+	    s+='_condense{}'.format(condense_dims)
 	
         return s
     #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
@@ -152,7 +157,7 @@ class Config():
     model_already_exists = False#True#os.path.isdir(dir_output)
 
     
-    extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars,use_seq2seq)
+    extra = gen_model_extra_str(hidden_size_lstm,use_crf, use_chars,use_seq2seq,use_condense_layer,condense_dims)
     if(use_seq2seq):
     	extra += '_'+str(seq2seq_enc_hidden_size)
     filename_dev = filename_test = "data/{}test_data.txt".format(domain_test)#"data/Resttest_data.txt"
