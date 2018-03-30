@@ -355,12 +355,13 @@ class NERModel(BaseModel):
          #       stepwise_cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels = tf.one_hot(decoder_targets, depth = self.config.nwords, dtype = tf.float32), logits = self.decoder_logits,)
           #      self.seq2seq_loss = tf.reduce_mean(stepwise_cross_entropy)
             
-     def condense_layer(self,concat_rep):
+    def condense_layer(self,concat_rep):
 	if(self.config.use_seq2seq and self.config.use_condense_layer): 
 	    with tf.variable_scope("condense"):
-		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [2*self.config.seq2seq_enc_hidden_size*8, self.config.condense_dims])
+		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [2*self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims])
 		b_con = tf.get_variable('b_con', dtype = tf.float32, shape= [self.config.condense_dims], initializer = tf.zeros_initializer())
-		return tf.nn.sigmoid(matmul(concat_rep,W_con)+b_con)
+		#NOTE: Have to experiment with activation function here
+		return tf.nn.relu(tf.matmul(concat_rep,W_con)+b_con)
 	    
 
     def bridge_seq2seq_embeddings(self):
@@ -378,7 +379,10 @@ class NERModel(BaseModel):
             if(self.config.use_condense_layer):
 		concat_within = lambda row: tf.concat([row,seq2seq_encoder_out[0,:]],1)
 		seq2seq_encoder_out = tf.map_fn(concat_within,seq2seq_encoder_out,dtype=tf.float32)[1:,]
-		self.seq2seq_encoder_embeds = tf.map_fn(condense_layer, seq2seq_encoder_out)
+		seq2seq_encoder_out = tf.reshape(seq2seq_encoder_out, [(dim1-1)*dim2, self.config.seq2seq_enc_hidden_size*4])
+		seq2seq_encoder_out = self.condense_layer(seq2seq_encoder_out)
+		self.seq2seq_encoder_embeds = tf.reshape(seq2seq_encoder_out, [(dim1-1), dim2,self.config.condense_dims])
+	        #self.seq2seq_encoder_embeds = tf.map_fn(self.condense_layer, seq2seq_encoder_out)
 	    
 		#1) Concatenate 0th with every element downwards
 		#2) Perform batch computation of each row and then column

@@ -86,7 +86,7 @@ class Config():
 
     # training
     train_embeddings = False
-    nepochs  	     = 10
+    nepochs  	     = 400
     #nepochs          = 100
     #NOTE:
     dropout          = 0.7
@@ -94,10 +94,10 @@ class Config():
     batch_size       = 25
     seq2seq_batch_size = 50
     lr_method        = "adagrad"
-    lr               = 0.3
-    lr_decay	     = 0.99
-   # lr              = 0.085 #Seq2seq
-   # lr_decay        = 0.99  #0.9 or 0.6 for absa 
+   # lr               = 0.26
+    #lr_decay	     = 0.99
+    lr              = 0.3 #Seq2seq
+    lr_decay        = 0.9  #0.9 or 0.6 for absa 
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 100
 
@@ -126,7 +126,7 @@ class Config():
     #use_only_seq2seq = True
    #NOTE
     #seq2seq_trained = True#True
-    seq2seq_trained=  True and use_seq2seq#Has seq2seq been trained
+    seq2seq_trained=  False and use_seq2seq#Has seq2seq been trained
     #complete_autoencode_including_test = False
     complete_autoencode_including_test = True and use_seq2seq #We only do this once testing data is available
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
@@ -140,15 +140,15 @@ class Config():
             s+='_chars'
         if(use_seq2seq):
             s+='_seq2seq'
-	if(use_condense_layer):
+	if(use_condense_layer or True):
 	    s+='_condense{}'.format(condense_dims)
 	
         return s
     #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
     #domain = domain_train = "Laptop"
     domain = domain_train = "Rest"
-    #domain_test = "Laptop"
-    domain_test = "Rest"
+    domain_test = "Laptop"
+    #domain_test = "Rest"
     embedding_name = "w2v"
     filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
  
@@ -169,7 +169,7 @@ class Config():
     else:
 	dir_output = "results/tr{}_te{}_{}_{}/".format(domain_train, domain_train, embedding_name, extra)
  
-	
+    print("Model dir: {}".format(dir_output))	
     if(not model_already_exists and os.path.exists(dir_output)):
 	x= int(input("Existing model found. Create new model or train existing model  (1/0)?"))
 	if(not bool(x)):
