@@ -358,7 +358,7 @@ class NERModel(BaseModel):
     def condense_layer(self,concat_rep):
 	if(self.config.use_seq2seq and self.config.use_condense_layer): 
 	    with tf.variable_scope("condense"):
-		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [2*self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims])
+		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims])
 		b_con = tf.get_variable('b_con', dtype = tf.float32, shape= [self.config.condense_dims], initializer = tf.zeros_initializer())
 		#NOTE: Have to experiment with activation function here
 		return tf.nn.relu(tf.matmul(concat_rep,W_con)+b_con)

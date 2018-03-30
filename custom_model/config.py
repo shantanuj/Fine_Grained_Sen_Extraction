@@ -116,7 +116,7 @@ class Config():
     use_seq2seq = True #False #Does model use seq2seq
     
     #Seq2seq stuff
-    use_condense_layer = False and use_seq2seq
+    use_condense_layer = True and use_seq2seq
     use_only_seq2seq = False and use_seq2seq
     use_cosine_sim = True and use_seq2seq 
     use_only_cosine_sim = False and use_seq2seq
@@ -126,7 +126,7 @@ class Config():
     #use_only_seq2seq = True
    #NOTE
     #seq2seq_trained = True#True
-    seq2seq_trained=  False and use_seq2seq#Has seq2seq been trained
+    seq2seq_trained=  True and use_seq2seq#Has seq2seq been trained
     #complete_autoencode_including_test = False
     complete_autoencode_including_test = True and use_seq2seq #We only do this once testing data is available
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
