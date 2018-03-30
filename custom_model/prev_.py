@@ -357,14 +357,14 @@ class NERModel(BaseModel):
             
     def condense_layer(self,concat_rep,dim1=0,dim2=0):
 	if(self.config.use_seq2seq and self.config.use_condense_layer): 
-	    with tf.variable_scope("condense", reuse=tf.AUTO_REUSE):
+	    with tf.variable_scope("condense"):
 		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [2*self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims])
 		b_con = tf.get_variable('b_con', dtype = tf.float32, shape= [self.config.condense_dims], initializer = tf.zeros_initializer())
 		#NOTE: Have to experiment with activation function here
-	        if(concat_rep is not None):
+		if(concat_rep is not None):
 		    return tf.nn.relu(tf.matmul(concat_rep,W_con)+b_con)
 	    	else:
-		    return tf.zeros([dim1,dim2,self.config.condense_dims])
+		    return tf.zeros([dim1, dim2, self.config.condense_dims])
 
     def bridge_seq2seq_embeddings(self):
 	#This is to convert the seq2seq outputs of shape 2d Time*Batch --> Perform comparison of missing word with all words-->convert into 3d shape(Batch*Time*Embeds), and then concatenate as batch*Time*Embeds with word_embeddings
@@ -420,8 +420,7 @@ class NERModel(BaseModel):
             if(self.config.train_seq2seq):
 		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)
 		if(self.config.use_condense_layer):
-		    condense_dummy = self.condense_layer(tf.zeros([dim2*(dim1-1),2*self.config.seq2seq_enc_hidden_size*4]))
-		    self.word_embeddings = tf.concat([self.word_embeddings, tf.reshape(condense_dummy, [dim2, dim1-1,self.config.condense_dims])], axis=-1)#self.condense_layer(None,dim2,dim1-1)], axis =-1) 
+		    self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2,dim1-1,self.config.condense_dims])], axis =-1) #self.condense_layer(None,dim2,dim1-1) 
 		else:
 		    self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
 	    else:
@@ -514,7 +513,8 @@ class NERModel(BaseModel):
             self.add_loss_op()
         else: 
 	    self.convert_tensors()
-	    
+	   # if(self.config.use_condense_layer):
+	#	self. 
             self.add_seq2seq()
             self.bridge_seq2seq_embeddings()
 	    self.add_logits_op()

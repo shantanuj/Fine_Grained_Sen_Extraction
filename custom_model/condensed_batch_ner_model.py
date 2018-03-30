@@ -354,27 +354,29 @@ class NERModel(BaseModel):
         #    with tf.variable_scope('seq2seq_training'):
          #       stepwise_cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels = tf.one_hot(decoder_targets, depth = self.config.nwords, dtype = tf.float32), logits = self.decoder_logits,)
           #      self.seq2seq_loss = tf.reduce_mean(stepwise_cross_entropy)
-            
-    def condense_layer(self,concat_rep,dim1=0,dim2=0):
+    '''        
+    def condense_layer(self,concat_rep):
 	if(self.config.use_seq2seq and self.config.use_condense_layer): 
-	    with tf.variable_scope("condense", reuse=tf.AUTO_REUSE):
+	    with tf.variable_scope("condense"):
 		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [2*self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims])
 		b_con = tf.get_variable('b_con', dtype = tf.float32, shape= [self.config.condense_dims], initializer = tf.zeros_initializer())
 		#NOTE: Have to experiment with activation function here
-	        if(concat_rep is not None):
+		if(concat_rep is not None):
 		    return tf.nn.relu(tf.matmul(concat_rep,W_con)+b_con)
-	    	else:
-		    return tf.zeros([dim1,dim2,self.config.condense_dims])
+    '''
+    
 
-    def bridge_seq2seq_embeddings(self):
-	#This is to convert the seq2seq outputs of shape 2d Time*Batch --> Perform comparison of missing word with all words-->convert into 3d shape(Batch*Time*Embeds), and then concatenate as batch*Time*Embeds with word_embeddings
-        if self.config.use_seq2seq:
+    
+ 	    
+
+    def pre_bridge_seq2seq_embeddings(self):
+	if self.config.use_seq2seq:
 	    #print(self.word
-	    dim1 = tf.shape(self.word_ids)[-1]+1 #Extra since normal rep + n missing reps
-	    dim2 = tf.shape(self.word_ids)[0]
+	    self.dim1 = tf.shape(self.word_ids)[-1]+1 #Extra since normal rep + n missing reps
+	    self.dim2 = tf.shape(self.word_ids)[0]
 	    #print(dim1, type(dim1))
 	    #print(type(self.encoder_concat_rep))
-            seq2seq_encoder_out = tf.reshape(self.encoder_concat_rep,[dim1, dim2, self.config.seq2seq_enc_hidden_size*4]) #Reshape time major,dims to Time(0th is normal one)*Batch*Dims output
+            seq2seq_encoder_out = tf.reshape(self.encoder_concat_rep,[self.dim1, self.dim2, self.config.seq2seq_enc_hidden_size*4]) #Reshape time major,dims to Time(0th is normal one)*Batch*Dims output
 
 	    #NOTE: seq2seq_encoder_out[0:]<-- corresponds to normal representation for all sentences. The 2nd dimension is the batch, the first dimension is seq_length+1
 	    #So we have to perform an operation on the first dimension first value(normal all words rep of sentence) with all other missing word reps. 
@@ -382,21 +384,42 @@ class NERModel(BaseModel):
 		concat_within = lambda row: tf.concat([row,seq2seq_encoder_out[0,:]],1)
 	#	self.shape_before = tf.shape(seq2seq_encoder_out)
 		seq2seq_encoder_out = tf.map_fn(concat_within,seq2seq_encoder_out,dtype=tf.float32)#[1:,:]
-		self.seq2seq_encoder_embeds = tf.map_fn(self.condense_layer, seq2seq_encoder_out)[1:,:]
+		
+		self.seq2seq_encoder_out = tf.reshape(seq2seq_encoder_out, [(self.dim1)*self.dim2, 2*self.config.seq2seq_enc_hidden_size*4])
+ 		
 
-		#self.shape_inter = tf.shape(seq2seq_encoder_out)
-		#seq2seq_encoder_out = tf.reshape(seq2seq_encoder_out, [(dim1)*dim2, 2*self.config.seq2seq_enc_hidden_size*4])
-		#seq2seq_encoder_out = self.condense_layer(seq2seq_encoder_out)
-		#seq2seq_encoder_out = tf.reshape(seq2seq_encoder_out, [(dim1), dim2,self.config.condense_dims])
-		#self.seq2seq_encoder_embeds = seq2seq_encoder_out[1:,:] 
-	#	self.shape_after = tf.shape(self.seq2seq_encoder_embeds)
-	        #self.seq2seq_encoder_embeds = tf.map_fn(self.condense_layer, seq2seq_encoder_out)
-	    
+    def condense_layer(self):
+	if(self.config.use_seq2seq and self.config.use_condense_layer): 
+	    with tf.variable_scope("condense",reuse= tf.AUTO_REUSE):
+		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [2*self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims])
+		b_con = tf.get_variable('b_con', dtype = tf.float32, shape= [self.config.condense_dims], initializer = tf.zeros_initializer())
+		#NOTE: Have to experiment with activation function here
+	
+            self.seq2seq_encoder_condensed =  tf.nn.relu(tf.matmul(self.seq2seq_encoder_out,W_con)+b_con)
+    
+    def bridge_seq2seq_embeddings(self):
+	#This is to convert the seq2seq outputs of shape 2d Time*Batch --> Perform comparison of missing word with all words-->convert into 3d shape(Batch*Time*Embeds), and then concatenate as batch*Time*Embeds with word_embeddings
+        if self.config.use_seq2seq:
+	     
+	    #print(self.word
+	    #dim1 = tf.shape(self.word_ids)[-1]+1 #Extra since normal rep + n missing reps
+	    #dim2 = tf.shape(self.word_ids)[0]
+	    #print(dim1, type(dim1))
+	    #print(type(self.encoder_concat_rep))
+            #seq2seq_encoder_out = tf.reshape(self.encoder_concat_rep,[dim1, dim2, self.config.seq2seq_enc_hidden_size*4]) #Reshape time major,dims to Time(0th is normal one)*Batch*Dims output
+
+	    #NOTE: seq2seq_encoder_out[0:]<-- corresponds to normal representation for all sentences. The 2nd dimension is the batch, the first dimension is seq_length+1
+	    #So we have to perform an operation on the first dimension first value(normal all words rep of sentence) with all other missing word reps. 
+            
+ 	    if(self.config.use_condense_layer):
+	        self.seq2seq_encoder_embeds = tf.reshape(self.seq2seq_encoder_condensed, [self.dim1, self.dim2, self.config.condense_dims])[1:,:]
+	
 		#1) Concatenate 0th with every element downwards
 		#2) Perform batch computation of each row and then column
 	    else:    
-		self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
-            self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
+	        self.seq2seq_encoder_embeds = tf.subtract(self.seq2seq_encoder_out, self.seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
+            
+	    self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
  	    
 	    if(self.config.use_cosine_sim):
 	    	def get_cosine_similarity_within(tensor):
@@ -405,14 +428,14 @@ class NERModel(BaseModel):
 		   
                     res_tensor = tf.transpose(res_tensor, perm = [1,0,2])
 		    return res_tensor
-	        cos_sim_h = get_cosine_similarity_within(seq2seq_encoder_out[:,:,:self.config.seq2seq_enc_hidden_size*2])
-		cos_sim_c = get_cosine_similarity_within(seq2seq_encoder_out[:,:,self.config.seq2seq_enc_hidden_size*2:])
+	        cos_sim_h = get_cosine_similarity_within(self.seq2seq_encoder_embeds[:,:,:self.config.seq2seq_enc_hidden_size*2])
+		cos_sim_c = get_cosine_similarity_within(self.seq2seq_encoder_embeds[:,:,self.config.seq2seq_enc_hidden_size*2:])
 		self.seq2seq_encoder_cosine_similarities = tf.concat([cos_sim_h, cos_sim_c], axis =-1)
 #	    	normalized_seq2seq_enc = tf.nn.l2_normalize(seq2seq_encoder_out, dim=2)
 #	    	self.seq2seq_encoder_cosine_similarities = tf.reduce_sum(tf.multiply(normalized_seq2seq_enc, normalized_seq2seq_enc[0,:,])[1:], 2, keep_dims=True)
 	    	#self.seq2seq_encoder_cosine_similarities = tf.transpose(self.seq2seq_encoder_cosine_similarities, perm =[1,0,2])
 		if(self.config.use_only_cosine_sim):
-		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_cosine_similarities,tf.zeros([dim2,dim1-1,self.config.seq2seq_enc_hidden_size*4-2])], axis=-1)
+		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_cosine_similarities,tf.zeros([self.dim2,self.dim1-1,self.config.seq2seq_enc_hidden_size*4-2])], axis=-1)
 		    #self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_cosine_similarities,tf.zeros([dim2,dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis=-1)	 
 		else:
 		    self.seq2seq_encoder_embeds = tf.concat([self.seq2seq_encoder_embeds[:,:,:-2], self.seq2seq_encoder_cosine_similarities], axis=-1)   #NOTE NOTE NOTE NOTE NOTE We drop the last rep dim to allow for cosine to be incorporated(static graph)
@@ -420,14 +443,13 @@ class NERModel(BaseModel):
             if(self.config.train_seq2seq):
 		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)
 		if(self.config.use_condense_layer):
-		    condense_dummy = self.condense_layer(tf.zeros([dim2*(dim1-1),2*self.config.seq2seq_enc_hidden_size*4]))
-		    self.word_embeddings = tf.concat([self.word_embeddings, tf.reshape(condense_dummy, [dim2, dim1-1,self.config.condense_dims])], axis=-1)#self.condense_layer(None,dim2,dim1-1)], axis =-1) 
+		    self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([self.dim2, self.dim1-1, self.config.condense_dims])], axis =-1) 
 		else:
-		    self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
+		    self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([self.dim2, self.dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
 	    else:
 		#self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
 		if(self.config.use_only_seq2seq):
-		    self.word_embeddings = tf.concat([tf.zeros([dim2,dim1-1,self.config.dim_word]),self.seq2seq_encoder_embeds],axis=-1)
+		    self.word_embeddings = tf.concat([tf.zeros([self.dim2,self.dim1-1,self.config.dim_word]),self.seq2seq_encoder_embeds],axis=-1)
 		else:
 		    self.word_embeddings = tf.concat([self.word_embeddings, self.seq2seq_encoder_embeds], axis =-1)
 		  	    
@@ -515,8 +537,13 @@ class NERModel(BaseModel):
         else: 
 	    self.convert_tensors()
 	    
+	   
             self.add_seq2seq()
-            self.bridge_seq2seq_embeddings()
+	    self.pre_bridge_seq2seq_embeddings()
+	    if(self.config.use_condense_layer):
+	        self.condense_layer() 
+            self.bridge_seq2seq_embeddings() 
+	   
 	    self.add_logits_op()
 	    self.add_pred_op()
             self.add_loss_op()		
