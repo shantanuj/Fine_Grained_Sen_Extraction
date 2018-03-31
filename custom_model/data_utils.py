@@ -74,23 +74,14 @@ class CoNLLDataset(object):
                     ls = line.split(' ')
                     word, tag = ls[0],ls[-1]
   		   # punct_flag = False
-                    if self.processing_word is not None:
-			#NOTE : The below line might lead to char embeds problem
-			#if(word[-1] in punctuation_dict.keys()):
-			    #print("HELLOS",word)
-		         #   punct_word = word[-1]
-			  #  word = word[:-1]
-			    #if(punct_word == '.'):
-			#	print(word+punct_word)
-			    
-			 #   punct_flag = True
-			    #print(word)
+                    if self.processing_word is not None: 
+			#word_dep_graph_id = self.get_graph_id(domain, niter, word)   #NOTE WE have to ensure that the niter and word is same for both graph formation process. This has been done so. 
                         word = self.processing_word(word)
                     if self.processing_tag is not None:
                         tag = self.processing_tag(tag)
                     words += [word]
                     tags += [tag]
-		    
+		    #word_dep_graphs += [word_dep_graph_id] 
 		   # if(punct_flag):
 		#	if self.processing_word is not None:
 		#	    punct_word = self.processing_word(punct_word)
