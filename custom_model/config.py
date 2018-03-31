@@ -94,7 +94,7 @@ class Config():
     batch_size       = 25
     seq2seq_batch_size = 50
     lr_method        = "adagrad"
-    lr               = 0.26
+    lr               = 0.2
     lr_decay	     = 0.99
     #lr              = 0.01 #Seq2seq
     #lr_decay        = 0.99  #0.9 or 0.6 for absa 
@@ -113,7 +113,7 @@ class Config():
     # NOTE: if both chars and crf, only 1.6x slower on GPU
     use_crf = True # if crf, training is 1.7x slower on CPU
     use_chars = False # if char embedding, training is 3.5x slower on CPU
-    use_seq2seq = True #False #Does model use seq2seq
+    use_seq2seq = True#True #False #Does model use seq2seq
     
     #Seq2seq stuff
     use_condense_layer = True and use_seq2seq
@@ -125,8 +125,8 @@ class Config():
     use_only_h = False and use_seq2seq #True
     #use_only_seq2seq = True
    #NOTE
-    seq2seq_trained = True#True
-    #seq2seq_trained=  False and use_seq2seq#Has seq2seq been trained
+    #seq2seq_trained = True#True
+    seq2seq_trained=  False and use_seq2seq#Has seq2seq been trained
 
     #complete_autoencode_including_test = False
     complete_autoencode_including_test = True and use_seq2seq #We only do this once testing data is available
@@ -148,8 +148,8 @@ class Config():
     #NOTE:>>>>>>>>>>> general config<<<<<<<<<<<<<<<<<<
     #domain = domain_train = "Laptop"
     domain = domain_train = "Rest"
-    domain_test = "Laptop"
-   # domain_test = "Rest"
+    #domain_test = "Laptop"
+    domain_test = "Rest"
     embedding_name = "w2v"
     filename_trimmed = "data/Embeddings/Pruned/np_Restw2vec_200d_trimmed.npz"#data/Embeddings/Pruned/np_glove_{}d_trimmed.npz".format(dim_word)
  
