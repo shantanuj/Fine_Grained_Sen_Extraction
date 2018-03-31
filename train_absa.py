@@ -1,5 +1,5 @@
 from custom_model.data_utils import CoNLLDataset
-from custom_model.ner_model import NERModel
+from custom_model.non_condense_ner_model import NERModel
 from custom_model.config import Config
 
 
