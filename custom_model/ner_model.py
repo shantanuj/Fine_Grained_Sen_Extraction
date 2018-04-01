@@ -383,7 +383,8 @@ class NERModel(BaseModel):
 	#	self.shape_before = tf.shape(seq2seq_encoder_out)
 		#seq2seq_encoder_out = tf.map_fn(concat_within,seq2seq_encoder_out,dtype=tf.float32)#[1:,:]
 		self.seq2seq_encoder_embeds = tf.map_fn(self.condense_layer, seq2seq_encoder_out)#[1:,:]
-		self.seq2seq_encoder_embeds = tf.subtract(self.seq2seq_encoder_embeds, self.seq2seq_encoder_embeds[0,:])[1:,:]
+		self.seq2seq_encoder_embeds = tf.subtract(self.seq2seq_encoder_embeds, self.seq2seq_encoder_embeds[0,:])[1:,:] #tf.abs 
+
 		#self.shape_inter = tf.shape(seq2seq_encoder_out)
 		#seq2seq_encoder_out = tf.reshape(seq2seq_encoder_out, [(dim1)*dim2, 2*self.config.seq2seq_enc_hidden_size*4])
 		#seq2seq_encoder_out = self.condense_layer(seq2seq_encoder_out)
@@ -395,7 +396,8 @@ class NERModel(BaseModel):
 		#1) Concatenate 0th with every element downwards
 		#2) Perform batch computation of each row and then column
 	    else:    
-		self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
+		self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #tf.abs
+		  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
             self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
  	    
 	    if(self.config.use_cosine_sim):
@@ -596,7 +598,7 @@ class NERModel(BaseModel):
 	    tr_ep_loss+=train_loss
        	    #if(i%70)
 	     #   print("ACTUAL,PREDICTED",words[0],predictions[0])	
-        for words, labels in minibatches(dev, batch_size):
+        for words, labels in minibatches(dev, 400):
             
             #te_loss = 5
             #predictions, encoder_useful_state = self.sess.run([self.decoder_prediction, self.encoder_concat_rep], dev_batch)
@@ -604,9 +606,11 @@ class NERModel(BaseModel):
 	    if(self.config.complete_autoencode_including_test):
 		 dev_batch = self.next_feed(words,lr=self.config.lr, dropout = self.config.dropout_seq2seq)		       
 		 _,te_loss, predictions = self.sess.run([self.seq2seq_train_op,self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
-	    #else:
-	    #dev_batch = self.feed_enc(words)
-	    #te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    else:
+	    	dev_batch = self.feed_enc(words)
+	    	te_loss, predictions = self.sess.run([self.seq2seq_loss,self.decoder_prediction], feed_dict = dev_batch)
+	    tr_ep_loss +=te_loss
+
 	    #te_loss = self.compute_seq2seq_acc(words, predictions)
 	    #prog.update(i + 1, [("test loss", te_acc)])
             #print("TE",len(words),len(words[0]),len(predictions), len(predictions[0]))
@@ -620,13 +624,13 @@ class NERModel(BaseModel):
         #print("Encoder state 0: {}".format(encoder_useful_state[0][0]))
         msg = "Autoencoding testing loss: {}".format(te_loss)
 	if(self.config.complete_autoencode_including_test):
-	    model_comparison_val =  tr_ep_loss
+	    model_comparison_val =  tr_ep_loss/i
 	else:
 	    model_comparison_val = te_loss
         #te_loss = 5
 	self.logger.info(msg)
 	#print("Cumulative loss: {}".format(float(train_loss)+float(te_loss)))
-        return 4#model_comparison_val
+        return model_comparison_val
 
     def run_epoch(self, train, dev, epoch):
         """Performs one complete pass over the train set and evaluate on dev

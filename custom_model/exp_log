@@ -8,7 +8,8 @@ EXPERIMENTS:
     a) Rest
 	a) Seq2seq (50d) trained for TR Rest only. Epochs ~ 100 with lr of 0.25 then 0.025 with 0.99 cut: Tr loss  at 0.9927 Te loss 3.4 ~ 1/2 hr
           ABSA accuracy: 
-		On rest:   f1 80.83  op_f1 84.49  ap_f1 81.91 tr_loss 0.131      	  
+		On rest:   f1 80.83  op_f1 84.49  ap_f1 81.91 tr_loss 0.131 
+			   f1 81.20  op_f1        ap_f1       	  
         b) Continued training of testing set and retrain absa model for couple epochs. Overall seq2seq loss: ____ ; 
   
           ABSA accuracy: 

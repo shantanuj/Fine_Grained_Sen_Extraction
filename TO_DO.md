@@ -1,3 +1,18 @@
+Stuff to try:
+1) in current code-> move condense to after difference
+2) Use a smaller seq2seq size and add word drop``
+3) Allow for different embeddings being loaded, and domain identification--> just two different word embedding layers, and a placeholder number val/boolean val 
+4) Try using uninitialized autoencoder-> if it performs similar then FORGET It
+
+5) Graph embeddings
+
+6) GRU 
+
+7) Word archetypes/prototypes
+
+
+
+
 1) 3rd Preprocess dependency structures, and incomplete dependenct structures. 
 	a) Simple NLTK/Spacy script to store dependenct structure
 	b) Assign node labels and graph labels-> store in graph2vec format
