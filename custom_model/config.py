@@ -129,7 +129,7 @@ class Config():
     #seq2seq_trained=  False and use_seq2seq#Has seq2seq been trained
 
     #complete_autoencode_including_test = False
-    complete_autoencode_including_test = True and use_seq2seq #We only do this once testing data is available
+    complete_autoencode_including_test = False and use_seq2seq #We only do this once testing data is available
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     
@@ -166,9 +166,9 @@ class Config():
     filename_train = "data/{}train_data.txt".format(domain_train)#"data/Resttrain_data.txt" # test
 
     if(use_seq2seq):
-        dir_output = "results/tr{}_te{}_{}_{}/".format(domain_train, domain_test, embedding_name, extra)
+        dir_output = "results/Final_tr{}_te{}_{}_{}/".format(domain_train, domain_test, embedding_name, extra)
     else:
-	dir_output = "results/tr{}_te{}_{}_{}/".format(domain_train, domain_train, embedding_name, extra)
+	dir_output = "results/Final_tr{}_te{}_{}_{}/".format(domain_train, domain_train, embedding_name, extra)
  
     print("Model dir: {}".format(dir_output))	
     if(not model_already_exists and os.path.exists(dir_output)):

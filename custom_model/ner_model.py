@@ -358,7 +358,7 @@ class NERModel(BaseModel):
     def condense_layer(self,concat_rep,dim1=0,dim2=0):
 	if(self.config.use_seq2seq and self.config.use_condense_layer): 
 	    with tf.variable_scope("condense", reuse=tf.AUTO_REUSE):
-		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims]) 
+		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [2*self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims]) 
 		b_con = tf.get_variable('b_con', dtype = tf.float32, shape= [self.config.condense_dims], initializer = tf.zeros_initializer())
 		#NOTE: Have to experiment with activation function here
 	        if(concat_rep is not None):
@@ -382,10 +382,13 @@ class NERModel(BaseModel):
 		#concat_within = lambda row: tf.concat([row,seq2seq_encoder_out[0,:]],1)
 	#	self.shape_before = tf.shape(seq2seq_encoder_out)
 		#seq2seq_encoder_out = tf.map_fn(concat_within,seq2seq_encoder_out,dtype=tf.float32)#[1:,:]
-		self.seq2seq_encoder_embeds = tf.map_fn(self.condense_layer, seq2seq_encoder_out)#[1:,:]
-		self.seq2seq_encoder_embeds = tf.subtract(self.seq2seq_encoder_embeds, self.seq2seq_encoder_embeds[0,:])[1:,:] #tf.abs 
-
-		#self.shape_inter = tf.shape(seq2seq_encoder_out)
+		#self.seq2seq_encoder_embeds = tf.map_fn(self.condense_layer, seq2seq_encoder_out)#[1:,:]
+		#self.seq2seq_encoder_embeds = tf.subtract(self.seq2seq_encoder_embeds, self.seq2seq_encoder_embeds[0,:])[1:,:] #tf.abs 
+     	        
+		self.seq2seq_encoder_embeds = tf.abs(tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:])
+		self.seq2seq_encoder_embeds = tf.map_fn(self.condense_layer, self.seq2seq_encoder_embeds)
+   #
+                #self.shape_inter = tf.shape(seq2seq_encoder_out)
 		#seq2seq_encoder_out = tf.reshape(seq2seq_encoder_out, [(dim1)*dim2, 2*self.config.seq2seq_enc_hidden_size*4])
 		#seq2seq_encoder_out = self.condense_layer(seq2seq_encoder_out)
 		#seq2seq_encoder_out = tf.reshape(seq2seq_encoder_out, [(dim1), dim2,self.config.condense_dims])
@@ -396,7 +399,7 @@ class NERModel(BaseModel):
 		#1) Concatenate 0th with every element downwards
 		#2) Perform batch computation of each row and then column
 	    else:    
-		self.seq2seq_encoder_embeds = tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:]  #tf.abs
+		self.seq2seq_encoder_embeds = tf.abs(tf.subtract(seq2seq_encoder_out, seq2seq_encoder_out[0,:])[1:,:])  #tf.abs
 		  #NOTE#NOTE#NOTE#NOTE Have to replace with a generic function-subtract, KL, MMD
             self.seq2seq_encoder_embeds = tf.transpose(self.seq2seq_encoder_embeds, perm =[1,0,2])
  	    
@@ -422,7 +425,7 @@ class NERModel(BaseModel):
             if(self.config.train_seq2seq):
 		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)
 		if(self.config.use_condense_layer):
-		    condense_dummy = self.condense_layer(tf.zeros([dim2*(dim1-1),self.config.seq2seq_enc_hidden_size*4]))
+		    condense_dummy = self.condense_layer(tf.zeros([dim2*(dim1-1),2*self.config.seq2seq_enc_hidden_size*4]))
 		    self.word_embeddings = tf.concat([self.word_embeddings, tf.reshape(condense_dummy, [dim2, dim1-1,self.config.condense_dims])], axis=-1)#self.condense_layer(None,dim2,dim1-1)], axis =-1) 
 		else:
 		    self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
