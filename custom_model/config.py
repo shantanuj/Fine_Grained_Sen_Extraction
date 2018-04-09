@@ -94,10 +94,10 @@ class Config():
     batch_size       = 25
     seq2seq_batch_size = 50
     lr_method        = "adagrad"
-    #lr               = 0.2 
-    #lr_decay	     = 0.99
-    lr              = 0.1 #Seq2seq 0.2 starting seems best for seq2seq
-    lr_decay        = 0.99  #0.9 or 0.6 for absa 
+    lr               = 0.2 
+    lr_decay	     = 0.99
+    #lr              = 0.1 #Seq2seq 0.2 starting seems best for seq2seq
+    #lr_decay        = 0.99  #0.9 or 0.6 for absa 
     clip             = -1 # if negative, no clipping
     nepoch_no_imprv  = 100
 
@@ -105,7 +105,7 @@ class Config():
     hidden_size_char = 100 # lstm on chars
     hidden_size_lstm = 400 # lstm on word embeddings
     seq2seq_enc_hidden_size = 75#100 #50
-    condense_dims = 100 #
+    condense_dims = 5 #
     #seq2seq_enc_hidden_size = 200
     seq2seq_dec_hidden_size = seq2seq_enc_hidden_size*2
  		
@@ -125,11 +125,11 @@ class Config():
     use_only_h = False and use_seq2seq #True
     #use_only_seq2seq = True
    #NOTE
-    seq2seq_trained = True#True
+    seq2seq_trained = True
     #seq2seq_trained=  False and use_seq2seq#Has seq2seq been trained
 
-    #complete_autoencode_including_test = False
-    complete_autoencode_including_test = False and use_seq2seq #We only do this once testing data is available
+    complete_autoencode_including_test = True
+    #complete_autoencode_including_test = False and use_seq2seq #We only do this once testing data is available
     train_seq2seq = not(seq2seq_trained) #Use model to train seq2seq
     #assert (train_seq2seq and use_seq2seq) or not(train_seq2seq and use_seq2seq)
     

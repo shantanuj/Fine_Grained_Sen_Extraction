@@ -358,7 +358,7 @@ class NERModel(BaseModel):
     def condense_layer(self,concat_rep,dim1=0,dim2=0):
 	if(self.config.use_seq2seq and self.config.use_condense_layer): 
 	    with tf.variable_scope("condense", reuse=tf.AUTO_REUSE):
-		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [2*self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims]) 
+		W_con = tf.get_variable("W_con", dtype =tf.float32, shape = [self.config.seq2seq_enc_hidden_size*4, self.config.condense_dims]) 
 		b_con = tf.get_variable('b_con', dtype = tf.float32, shape= [self.config.condense_dims], initializer = tf.zeros_initializer())
 		#NOTE: Have to experiment with activation function here
 	        if(concat_rep is not None):
@@ -425,7 +425,7 @@ class NERModel(BaseModel):
             if(self.config.train_seq2seq):
 		#NOTE NOTE NOTE NOTE : This is done to allow training optimization of absa to be added to graph (else it links word embeddings) #NOTE: ALSO, this only works when we take enc h+c bidirectional rep (multiply by 4)
 		if(self.config.use_condense_layer):
-		    condense_dummy = self.condense_layer(tf.zeros([dim2*(dim1-1),2*self.config.seq2seq_enc_hidden_size*4]))
+		    condense_dummy = self.condense_layer(tf.zeros([dim2*(dim1-1),self.config.seq2seq_enc_hidden_size*4]))
 		    self.word_embeddings = tf.concat([self.word_embeddings, tf.reshape(condense_dummy, [dim2, dim1-1,self.config.condense_dims])], axis=-1)#self.condense_layer(None,dim2,dim1-1)], axis =-1) 
 		else:
 		    self.word_embeddings = tf.concat([self.word_embeddings, tf.zeros([dim2, dim1-1,self.config.seq2seq_enc_hidden_size*4])], axis =-1)
