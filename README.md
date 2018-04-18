@@ -1,4 +1,4 @@
-# Fine Grained Sentiment Extraction (NTU Final Year Project)
+# Fine Grained Sentiment Extraction
 
 Implementation of bidirectional LSTM + missing word representations through seq2seq Autoencoders. 
 
