@@ -16,4 +16,3 @@ REMEMBER TO change train_seq2seq in config.py to switch from seq2seq to absa tra
 
 5) For new vocab either use config or manually update vocab pickle file. 
 
-6) Do not run make data
