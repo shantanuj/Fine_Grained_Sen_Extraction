@@ -4,7 +4,7 @@ Implementation of bidirectional LSTM + missing word representations through seq2
 
 Further experiments for domain adaptation on usage of different types of word embeddings (Glove, custom word2vec and geoDIST), a 
 
-Model code is developed on top of general sequence tagging through deep learning [repo](https://github.com/guillaumegenthial/sequence_tagging).
+Model code is developed on top of general sequence tagging in [Tensorflow framework by Guillaume Genthial repository](https://github.com/guillaumegenthial/sequence_tagging).
 
 ## Task
 
