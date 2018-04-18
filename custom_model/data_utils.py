@@ -78,9 +78,11 @@ class CoNLLDataset(object):
 			#word_dep_graph_id = self.get_graph_id(domain, niter, word)   #NOTE WE have to ensure that the niter and word is same for both graph formation process. This has been done so. 
                         word = self.processing_word(word)
                     if self.processing_tag is not None:
-                        tag = self.processing_tag(tag)
+                        #print(tag)
+			tag = self.processing_tag(tag)
                     words += [word]
                     tags += [tag]
+		    #print(words, tags)
 		    #word_dep_graphs += [word_dep_graph_id] 
 		   # if(punct_flag):
 		#	if self.processing_word is not None:

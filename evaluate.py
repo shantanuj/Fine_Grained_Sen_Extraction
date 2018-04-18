@@ -44,7 +44,7 @@ def interactive_shell(model):
 This is an interactive mode.
 To exit, enter 'exit'.
 You can enter a sentence like
-input> I love Paris""")
+input> I love the hash-browns but the service is really slow""")
 
     while True:
         try:
